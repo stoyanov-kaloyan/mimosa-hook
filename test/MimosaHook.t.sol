@@ -16,7 +16,6 @@ import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 import {MimosaHook} from "../src/MimosaHook.sol";
-import {ReactiveTrigger} from "../src/ReactiveTrigger.sol";
 
 /// @title MimosaHookTest
 /// @notice End-to-end tests demonstrating the event-driven automation primitive.
@@ -33,14 +32,12 @@ contract MimosaHookTest is Test, Deployers {
     using StateLibrary for IPoolManager;
 
     MimosaHook public hook;
-    ReactiveTrigger public trigger;
 
     PoolKey poolKey;
     PoolId poolId;
 
     // Actors
     address policyOwner = makeAddr("policyOwner");
-    address reactiveBot = makeAddr("reactiveBot");
 
     // Constants
     uint128 constant DEPOSIT_AMOUNT = 10e18;
@@ -82,9 +79,6 @@ contract MimosaHookTest is Test, Deployers {
         token0.approve(address(hook), type(uint256).max);
         token1.approve(address(hook), type(uint256).max);
         vm.stopPrank();
-
-        // 7. Deploy ReactiveTrigger
-        trigger = new ReactiveTrigger(address(hook), reactiveBot);
     }
 
     /// @notice Full demo narrative.
@@ -131,11 +125,10 @@ contract MimosaHookTest is Test, Deployers {
         uint160 priceAfter = hook.getCurrentPrice(poolId);
         assertLt(priceAfter, SQRT_PRICE_1_2, "Price should be below trigger");
 
-        // Step 4: Reactive triggers execution
+        // Step 4: Execute policy (permissionless — anyone can trigger)
         uint256 token0Before = MockERC20(Currency.unwrap(currency0)).balanceOf(policyOwner);
 
-        vm.prank(reactiveBot);
-        trigger.react(policyId);
+        hook.executePolicy(policyId);
 
         // Step 5: Policy owner received output token (token0)
         uint256 token0After = MockERC20(Currency.unwrap(currency0)).balanceOf(policyOwner);
@@ -221,33 +214,6 @@ contract MimosaHookTest is Test, Deployers {
         // Execution succeeds
         hook.executePolicy(policyId);
         assertTrue(hook.getPolicy(policyId).executed);
-    }
-
-    function test_reactiveTrigger_unauthorized() public {
-        address unauthorized = makeAddr("unauthorized");
-        vm.prank(unauthorized);
-        vm.expectRevert(ReactiveTrigger.UnauthorizedOrigin.selector);
-        trigger.react(0);
-    }
-
-    function test_reactiveTrigger_batchExecution() public {
-        vm.startPrank(policyOwner);
-        hook.deposit(currency1, DEPOSIT_AMOUNT);
-        uint256 id0 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
-        uint256 id1 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
-        vm.stopPrank();
-
-        _movePriceDown();
-
-        uint256[] memory ids = new uint256[](2);
-        ids[0] = id0;
-        ids[1] = id1;
-
-        vm.prank(reactiveBot);
-        trigger.reactBatch(ids);
-
-        assertTrue(hook.getPolicy(id0).executed, "Policy 0 should be executed");
-        assertTrue(hook.getPolicy(id1).executed, "Policy 1 should be executed");
     }
 
     function test_getCurrentPrice() public view {
@@ -357,25 +323,6 @@ contract MimosaHookTest is Test, Deployers {
             "Token balance should be fully restored"
         );
         vm.stopPrank();
-    }
-
-    function test_reactBatch_partialFailure() public {
-        vm.startPrank(policyOwner);
-        hook.deposit(currency1, DEPOSIT_AMOUNT);
-        uint256 id0 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
-        vm.stopPrank();
-
-        // id0 exists but condition not met; id 999 doesn't exist
-        uint256[] memory ids = new uint256[](2);
-        ids[0] = id0;
-        ids[1] = 999;
-
-        // Both should fail (condition not met / nonexistent) — but no revert
-        vm.prank(reactiveBot);
-        trigger.reactBatch(ids);
-
-        // id0 should NOT have been executed (condition not met)
-        assertFalse(hook.getPolicy(id0).executed, "Policy 0 should not execute when condition not met");
     }
 
     function test_registerPolicy_poolNotInitialized() public {

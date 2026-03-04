@@ -61,6 +61,7 @@ contract MimosaHook is BaseHook, IUnlockCallback {
     event PolicyRegistered(
         uint256 indexed policyId,
         address indexed owner,
+        PoolId indexed poolId,
         uint160 triggerPrice,
         bool triggerAbove,
         bool zeroForOne,
@@ -184,7 +185,16 @@ contract MimosaHook is BaseHook, IUnlockCallback {
         _addActivePolicy(poolId, policyId);
 
         emit PolicyRegistered(
-            policyId, msg.sender, triggerPrice, triggerAbove, zeroForOne, inputAmount, minOutput, expiry, executorTip
+            policyId,
+            msg.sender,
+            poolId,
+            triggerPrice,
+            triggerAbove,
+            zeroForOne,
+            inputAmount,
+            minOutput,
+            expiry,
+            executorTip
         );
     }
 

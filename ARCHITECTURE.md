@@ -17,20 +17,6 @@
 3. **Extensibility** — swap the reactive or callback contract without modifying the hook.
 4. **Callback authorization** — MimosaCallback validates both `msg.sender == CallbackProxy` and the embedded ReactVM ID, preventing unauthorized triggering.
 
-### Reactive Network Integration Flow
-
-```
- Origin Chain                    Reactive Network                   Origin Chain
- ┌────────────┐                  ┌──────────────┐                  ┌──────────────┐
- │PoolManager │──Swap event──────▶│MimosaReactive│──Callback event──▶│MimosaCallback│
- │            │                  │  (ReactVM)   │                  │              │
- │MimosaHook  │──PolicyRegistered▶│  tracks      │                  │ executePolicy│
- │            │──PolicyExecuted──▶│  policies    │                  │   ──▶ Hook   │
- │            │──PolicyCancelled─▶│  per pool    │                  │              │
- │            │──PolicyExpired───▶│              │                  │              │
- └────────────┘                  └──────────────┘                  └──────────────┘
-```
-
 **Event subscriptions (set in MimosaReactive constructor):**
 
 | Event              | Source      | Purpose                              |

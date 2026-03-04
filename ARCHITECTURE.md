@@ -4,10 +4,10 @@
 
 ## Contract Separation
 
-| Contract            | Chain                         | Responsibility                                                                                                                      |
-| ------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **MimosaHook**      | Ethereum                      | Stores policies, validates price, executes swaps atomically inside the v4 pool. Attaches via `afterInitialize`.                     |
-| **ReactiveTrigger** | Ethereum (called by Reactive) | Thin relay that bridges Reactive Network event detection to `MimosaHook.executePolicy()`. Catches reverts so subscriptions survive. |
+| Contract            | Chain                         | Responsibility                                                                                                                             |
+| ------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **MimosaHook**      | Ethereum                      | Stores policies, validates price, executes swaps atomically inside v4 pools. Supports multiple pools per deployment via `afterInitialize`. |
+| **ReactiveTrigger** | Ethereum (called by Reactive) | Thin relay that bridges Reactive Network event detection to `MimosaHook.executePolicy()`. Catches reverts so subscriptions survive.        |
 
 ### Why two contracts?
 
@@ -22,16 +22,20 @@
 ```solidity
 struct Policy {
     address owner;        // creator & output recipient
+    PoolId  poolId;       // which pool this policy targets
     uint160 triggerPrice; // sqrtPriceX96 threshold
     bool    triggerAbove; // true → fire when price ≥ trigger
     bool    zeroForOne;   // swap direction
     uint128 inputAmount;  // exact-input amount
+    uint128 minOutput;    // slippage guard (0 = no limit)
     bool    executed;     // one-shot guard
 }
 ```
 
 **Storage layout:**
 
+- `mapping(PoolId => PoolKey) _poolKeys` — registered pools (populated by afterInitialize)
+- `mapping(PoolId => bool) poolInitialized` — quick existence check
 - `mapping(uint256 => Policy) policies` — flat mapping, O(1) lookup
 - `uint256 nextPolicyId` — sequential counter
 - `mapping(address => mapping(Currency => uint256)) deposits` — pre-funded balances
@@ -41,6 +45,7 @@ struct Policy {
 - Single struct, no nested mappings — auditable and gas-efficient.
 - `executed` flag prevents double execution without complex bookkeeping.
 - Deposits are separated from policies so a user can fund multiple policies from one balance.
+- Multi-pool: a single hook deployment can serve any number of pools. Each policy stores its target `poolId`, so policies on different pools are fully independent.
 
 ---
 
@@ -57,9 +62,9 @@ executePolicy(policyId)
 │     triggerAbove=false → require(currentPrice ≤ triggerPrice)
 ├─ 5. Set executed = true  (CEI pattern — before external call)
 ├─ 6. Call poolManager.unlock() → unlockCallback()
-│     ├─ poolManager.swap(poolKey, params, "")
-│     ├─ _settleDelta(currency0, delta.amount0())
-│     └─ _settleDelta(currency1, delta.amount1())
+│     ├─ poolManager.swap(key, params, "")
+│     ├─ _settleDelta(key.currency0, delta.amount0())
+│     └─ _settleDelta(key.currency1, delta.amount1())
 └─ 7. Emit PolicyExecuted(policyId, amount0, amount1)
 ```
 
@@ -73,7 +78,7 @@ executePolicy(policyId)
 
  1. SETUP
     User deposits token1 into MimosaHook
-    User calls registerPolicy(triggerPrice=P, triggerAbove=false,
+    User calls registerPolicy(poolId, triggerPrice=P, triggerAbove=false,
                               zeroForOne=false, amount=A)
     Policy stored, deposit reserved
 
@@ -115,6 +120,7 @@ executePolicy(policyId)
 | **Deposit safety**         | Tokens held by hook; reserved at policy registration. Only the depositor can withdraw unreserved funds.                                                        |
 | **Callback validation**    | `unlockCallback` checks `msg.sender == address(poolManager)`.                                                                                                  |
 | **Front-running**          | Trigger is permissionless — anyone can call `executePolicy` before Reactive. This is by design: policy executes at market price regardless of who triggers it. |
+| **Slippage / sandwich**    | `minOutput` field on each policy sets a floor on swap output. If the AMM returns less, the entire transaction reverts inside `unlockCallback`.                 |
 
 ---
 
@@ -158,6 +164,14 @@ forge test -vvv --match-path test/MimosaHook.t.sol
 | `test_reactiveTrigger_batchExecution`       | Multiple policies execute in one tx                                                      |
 | `test_getCurrentPrice`                      | Price read works                                                                         |
 | `test_multiplePolicies_differentThresholds` | Policies at different thresholds execute independently                                   |
+| `test_cancelPolicy_refundsDeposit`          | Cancel returns reserved tokens to deposit balance                                        |
+| `test_cancelPolicy_notOwner`                | Only owner can cancel a policy                                                           |
+| `test_cancelPolicy_alreadyExecuted`         | Cannot cancel an already-executed policy                                                 |
+| `test_cancelPolicy_nonexistent`             | Cannot cancel a non-existent policy                                                      |
+| `test_cancelPolicy_thenWithdraw`            | Cancel + withdraw restores full token balance                                            |
+| `test_reactBatch_partialFailure`            | Batch handles failures gracefully without reverting                                      |
+| `test_registerPolicy_poolNotInitialized`    | Cannot register a policy for an uninitialized pool                                       |
+| `test_multiPool`                            | Two pools share one hook; policies and prices are independent                            |
 
 ### Suggested next steps for integration testing
 
@@ -174,7 +188,7 @@ src/
 ├── MimosaHook.sol        # V4 hook: policies, validation, swap execution
 └── ReactiveTrigger.sol   # Reactive Network relay contract
 test/
-└── MimosaHook.t.sol      # Full test suite (11 tests)
+└── MimosaHook.t.sol      # Full test suite (23 tests)
 ```
 
 ---
@@ -187,4 +201,5 @@ The architecture naturally extends to:
 - **Multiple actions** — replace the fixed swap with an action enum (swap, add/remove liquidity, donate)
 - **Recurring policies** — remove the `executed` flag, add a cooldown period
 - **Cross-chain triggers** — Reactive Network already supports cross-chain event subscriptions
+- **Multi-pool strategies** — policies that span multiple pools (e.g., arbitrage between fee tiers)
 - **TWAP oracles** — replace the spot price check with a TWAP condition for manipulation resistance

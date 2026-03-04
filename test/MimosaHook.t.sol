@@ -103,29 +103,24 @@ contract MimosaHookTest is Test, Deployers {
             triggerAbove: false,
             zeroForOne: false,
             inputAmount: POLICY_AMOUNT,
-            minOutput: 0
+            minOutput: 0,
+            expiry: 0,
+            executorTip: 0
         });
         vm.stopPrank();
 
         // Verify storage
-        (
-            address owner,
-            PoolId policyPoolId,
-            uint160 triggerPrice,
-            bool triggerAbove,
-            bool zeroForOne,
-            uint128 inputAmount,
-            uint128 minOutput,
-            bool executed
-        ) = hook.policies(policyId);
-        assertEq(owner, policyOwner);
-        assertEq(PoolId.unwrap(policyPoolId), PoolId.unwrap(poolId));
-        assertEq(triggerPrice, SQRT_PRICE_1_2);
-        assertFalse(triggerAbove);
-        assertFalse(zeroForOne);
-        assertEq(inputAmount, POLICY_AMOUNT);
-        assertEq(minOutput, 0);
-        assertFalse(executed);
+        MimosaHook.Policy memory p = hook.getPolicy(policyId);
+        assertEq(p.owner, policyOwner);
+        assertEq(PoolId.unwrap(p.poolId), PoolId.unwrap(poolId));
+        assertEq(p.triggerPrice, SQRT_PRICE_1_2);
+        assertFalse(p.triggerAbove);
+        assertFalse(p.zeroForOne);
+        assertEq(p.inputAmount, POLICY_AMOUNT);
+        assertEq(p.minOutput, 0);
+        assertEq(p.expiry, 0);
+        assertEq(p.executorTip, 0);
+        assertFalse(p.executed);
 
         // Step 2: Condition NOT met -> revert
         vm.expectRevert(MimosaHook.TriggerConditionNotMet.selector);
@@ -147,8 +142,7 @@ contract MimosaHookTest is Test, Deployers {
         assertGt(token0After, token0Before, "Policy owner should have received token0");
 
         // Step 6: Policy marked executed
-        (,,,,,,, bool isExecuted) = hook.policies(policyId);
-        assertTrue(isExecuted, "Policy should be marked executed");
+        assertTrue(hook.getPolicy(policyId).executed, "Policy should be marked executed");
 
         // Step 7: Double execution reverts
         vm.expectRevert(MimosaHook.PolicyAlreadyExecuted.selector);
@@ -168,13 +162,13 @@ contract MimosaHookTest is Test, Deployers {
     function test_registerPolicy_insufficientDeposit() public {
         vm.prank(policyOwner);
         vm.expectRevert(MimosaHook.InsufficientDeposit.selector);
-        hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, true, POLICY_AMOUNT, 0);
+        hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, true, POLICY_AMOUNT, 0, 0, 0);
     }
 
     function test_registerPolicy_zeroAmount() public {
         vm.prank(policyOwner);
         vm.expectRevert(MimosaHook.InvalidAmount.selector);
-        hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, true, 0, 0);
+        hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, true, 0, 0, 0, 0);
     }
 
     function test_executePolicy_nonexistent() public {
@@ -186,7 +180,7 @@ contract MimosaHookTest is Test, Deployers {
         // Deposit token1, buy token0 when price drops
         vm.startPrank(policyOwner);
         hook.deposit(currency1, DEPOSIT_AMOUNT);
-        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
         vm.stopPrank();
 
         _movePriceDown();
@@ -196,8 +190,7 @@ contract MimosaHookTest is Test, Deployers {
         vm.prank(random);
         hook.executePolicy(policyId);
 
-        (,,,,,,, bool executed) = hook.policies(policyId);
-        assertTrue(executed);
+        assertTrue(hook.getPolicy(policyId).executed);
     }
 
     function test_triggerAbove_direction() public {
@@ -210,7 +203,9 @@ contract MimosaHookTest is Test, Deployers {
             triggerAbove: true,
             zeroForOne: true, // sell token0 when price is high
             inputAmount: POLICY_AMOUNT,
-            minOutput: 0
+            minOutput: 0,
+            expiry: 0,
+            executorTip: 0
         });
         vm.stopPrank();
 
@@ -225,8 +220,7 @@ contract MimosaHookTest is Test, Deployers {
 
         // Execution succeeds
         hook.executePolicy(policyId);
-        (,,,,,,, bool executed) = hook.policies(policyId);
-        assertTrue(executed);
+        assertTrue(hook.getPolicy(policyId).executed);
     }
 
     function test_reactiveTrigger_unauthorized() public {
@@ -239,8 +233,8 @@ contract MimosaHookTest is Test, Deployers {
     function test_reactiveTrigger_batchExecution() public {
         vm.startPrank(policyOwner);
         hook.deposit(currency1, DEPOSIT_AMOUNT);
-        uint256 id0 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
-        uint256 id1 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
+        uint256 id0 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
+        uint256 id1 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
         vm.stopPrank();
 
         _movePriceDown();
@@ -252,10 +246,8 @@ contract MimosaHookTest is Test, Deployers {
         vm.prank(reactiveBot);
         trigger.reactBatch(ids);
 
-        (,,,,,,, bool exec0) = hook.policies(id0);
-        (,,,,,,, bool exec1) = hook.policies(id1);
-        assertTrue(exec0, "Policy 0 should be executed");
-        assertTrue(exec1, "Policy 1 should be executed");
+        assertTrue(hook.getPolicy(id0).executed, "Policy 0 should be executed");
+        assertTrue(hook.getPolicy(id1).executed, "Policy 1 should be executed");
     }
 
     function test_getCurrentPrice() public view {
@@ -268,9 +260,9 @@ contract MimosaHookTest is Test, Deployers {
         hook.deposit(currency1, DEPOSIT_AMOUNT);
 
         // A: triggers at SQRT_PRICE_1_2 (moderate drop)
-        uint256 idA = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
+        uint256 idA = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
         // B: triggers at SQRT_PRICE_1_4 (large drop -- may not be reached)
-        uint256 idB = hook.registerPolicy(poolId, SQRT_PRICE_1_4, false, false, POLICY_AMOUNT, 0);
+        uint256 idB = hook.registerPolicy(poolId, SQRT_PRICE_1_4, false, false, POLICY_AMOUNT, 0, 0, 0);
         vm.stopPrank();
 
         _movePriceDown();
@@ -279,8 +271,7 @@ contract MimosaHookTest is Test, Deployers {
         // A should be executable
         if (price <= SQRT_PRICE_1_2) {
             hook.executePolicy(idA);
-            (,,,,,,, bool execA) = hook.policies(idA);
-            assertTrue(execA, "Policy A should execute");
+            assertTrue(hook.getPolicy(idA).executed, "Policy A should execute");
         }
 
         // B may not be reachable
@@ -302,7 +293,7 @@ contract MimosaHookTest is Test, Deployers {
         vm.startPrank(policyOwner);
         hook.deposit(currency1, DEPOSIT_AMOUNT);
 
-        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
 
         // Deposit was reduced by POLICY_AMOUNT
         uint256 depositAfterRegister = hook.deposits(policyOwner, currency1);
@@ -315,15 +306,14 @@ contract MimosaHookTest is Test, Deployers {
         assertEq(depositAfterCancel, DEPOSIT_AMOUNT, "Full deposit should be restored");
 
         // Policy is marked executed (preventing re-cancel / re-execute)
-        (,,,,,,, bool executed) = hook.policies(policyId);
-        assertTrue(executed, "Cancelled policy should be marked executed");
+        assertTrue(hook.getPolicy(policyId).executed, "Cancelled policy should be marked executed");
         vm.stopPrank();
     }
 
     function test_cancelPolicy_notOwner() public {
         vm.startPrank(policyOwner);
         hook.deposit(currency0, DEPOSIT_AMOUNT);
-        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, true, POLICY_AMOUNT, 0);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, true, POLICY_AMOUNT, 0, 0, 0);
         vm.stopPrank();
 
         address stranger = makeAddr("stranger");
@@ -335,7 +325,7 @@ contract MimosaHookTest is Test, Deployers {
     function test_cancelPolicy_alreadyExecuted() public {
         vm.startPrank(policyOwner);
         hook.deposit(currency1, DEPOSIT_AMOUNT);
-        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
         vm.stopPrank();
 
         _movePriceDown();
@@ -354,7 +344,7 @@ contract MimosaHookTest is Test, Deployers {
     function test_cancelPolicy_thenWithdraw() public {
         vm.startPrank(policyOwner);
         hook.deposit(currency1, DEPOSIT_AMOUNT);
-        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
 
         // Cancel to reclaim, then withdraw everything
         hook.cancelPolicy(policyId);
@@ -372,7 +362,7 @@ contract MimosaHookTest is Test, Deployers {
     function test_reactBatch_partialFailure() public {
         vm.startPrank(policyOwner);
         hook.deposit(currency1, DEPOSIT_AMOUNT);
-        uint256 id0 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
+        uint256 id0 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
         vm.stopPrank();
 
         // id0 exists but condition not met; id 999 doesn't exist
@@ -385,8 +375,7 @@ contract MimosaHookTest is Test, Deployers {
         trigger.reactBatch(ids);
 
         // id0 should NOT have been executed (condition not met)
-        (,,,,,,, bool exec0) = hook.policies(id0);
-        assertFalse(exec0, "Policy 0 should not execute when condition not met");
+        assertFalse(hook.getPolicy(id0).executed, "Policy 0 should not execute when condition not met");
     }
 
     function test_registerPolicy_poolNotInitialized() public {
@@ -395,7 +384,7 @@ contract MimosaHookTest is Test, Deployers {
 
         vm.prank(policyOwner);
         vm.expectRevert(MimosaHook.PoolNotInitialized.selector);
-        hook.registerPolicy(fakePoolId, SQRT_PRICE_1_2, false, true, POLICY_AMOUNT, 0);
+        hook.registerPolicy(fakePoolId, SQRT_PRICE_1_2, false, true, POLICY_AMOUNT, 0, 0, 0);
     }
 
     function test_multiPool() public {
@@ -414,12 +403,11 @@ contract MimosaHookTest is Test, Deployers {
         // Register a policy on pool 2
         vm.startPrank(policyOwner);
         hook.deposit(currency1, DEPOSIT_AMOUNT);
-        uint256 pId = hook.registerPolicy(poolId2, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0);
+        uint256 pId = hook.registerPolicy(poolId2, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
         vm.stopPrank();
 
         // Policy should reference pool 2
-        (, PoolId storedPoolId,,,,,,) = hook.policies(pId);
-        assertEq(PoolId.unwrap(storedPoolId), PoolId.unwrap(poolId2), "Policy should reference pool 2");
+        assertEq(PoolId.unwrap(hook.getPolicy(pId).poolId), PoolId.unwrap(poolId2), "Policy should reference pool 2");
 
         // Move price on pool 2 only
         swap(key2, true, BIG_SWAP, ZERO_BYTES);
@@ -432,8 +420,7 @@ contract MimosaHookTest is Test, Deployers {
 
         // Execute policy on pool 2
         hook.executePolicy(pId);
-        (,,,,,,, bool executed) = hook.policies(pId);
-        assertTrue(executed, "Policy on pool 2 should be executed");
+        assertTrue(hook.getPolicy(pId).executed, "Policy on pool 2 should be executed");
     }
 
     function test_slippage_protection_passes() public {
@@ -447,7 +434,9 @@ contract MimosaHookTest is Test, Deployers {
             triggerAbove: false,
             zeroForOne: false,
             inputAmount: POLICY_AMOUNT,
-            minOutput: 1 // extremely low, will always pass
+            minOutput: 1, // extremely low, will always pass
+            expiry: 0,
+            executorTip: 0
         });
         vm.stopPrank();
 
@@ -470,7 +459,9 @@ contract MimosaHookTest is Test, Deployers {
             triggerAbove: false,
             zeroForOne: false,
             inputAmount: POLICY_AMOUNT,
-            minOutput: type(uint128).max // impossible to achieve
+            minOutput: type(uint128).max, // impossible to achieve
+            expiry: 0,
+            executorTip: 0
         });
         vm.stopPrank();
 
@@ -504,5 +495,178 @@ contract MimosaHookTest is Test, Deployers {
         vm.prank(policyOwner);
         vm.expectRevert("Incorrect ETH");
         hook.deposit{value: 0.5 ether}(ethCurrency, 1e18);
+    }
+
+    function test_activePolicy_index() public {
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        uint256 id0 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
+        uint256 id1 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
+        uint256 id2 = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
+        vm.stopPrank();
+
+        // All 3 should be active
+        uint256[] memory active = hook.getActivePolicies(poolId);
+        assertEq(active.length, 3);
+        assertEq(hook.getActivePoliciesCount(poolId), 3);
+
+        // Cancel id1 (middle) — swap-and-pop should keep id0 and id2
+        vm.prank(policyOwner);
+        hook.cancelPolicy(id1);
+        active = hook.getActivePolicies(poolId);
+        assertEq(active.length, 2);
+
+        // Move price down and execute id0
+        _movePriceDown();
+        hook.executePolicy(id0);
+        active = hook.getActivePolicies(poolId);
+        assertEq(active.length, 1);
+        assertEq(active[0], id2, "Only id2 should remain");
+    }
+
+    function test_expiry_revertsWhenExpired() public {
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        uint64 expiryTime = uint64(block.timestamp + 1 hours);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, expiryTime, 0);
+        vm.stopPrank();
+
+        _movePriceDown();
+
+        // Warp past expiry
+        vm.warp(expiryTime + 1);
+        vm.expectRevert(MimosaHook.PolicyIsExpired.selector);
+        hook.executePolicy(policyId);
+    }
+
+    function test_expiry_executesBeforeDeadline() public {
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        uint64 expiryTime = uint64(block.timestamp + 1 hours);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, expiryTime, 0);
+        vm.stopPrank();
+
+        _movePriceDown();
+
+        // Execute before expiry — should succeed
+        hook.executePolicy(policyId);
+        assertTrue(hook.getPolicy(policyId).executed);
+    }
+
+    function test_expirePolicy_refunds() public {
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        uint64 expiryTime = uint64(block.timestamp + 1 hours);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, expiryTime, 0);
+        vm.stopPrank();
+
+        uint256 depositBefore = hook.deposits(policyOwner, currency1);
+
+        // Warp past expiry
+        vm.warp(expiryTime + 1);
+
+        // Anyone can call expirePolicy
+        address random = makeAddr("random");
+        vm.prank(random);
+        hook.expirePolicy(policyId);
+
+        // Refund goes to policy owner's deposits
+        uint256 depositAfter = hook.deposits(policyOwner, currency1);
+        assertEq(depositAfter, depositBefore + POLICY_AMOUNT, "Owner deposit should be restored");
+
+        // Policy is marked executed
+        assertTrue(hook.getPolicy(policyId).executed);
+
+        // Active policies should be empty
+        assertEq(hook.getActivePoliciesCount(poolId), 0);
+    }
+
+    function test_expirePolicy_notExpiredYet() public {
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        uint64 expiryTime = uint64(block.timestamp + 1 hours);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, expiryTime, 0);
+        vm.stopPrank();
+
+        // Try to expire before deadline
+        vm.expectRevert(MimosaHook.PolicyNotExpired.selector);
+        hook.expirePolicy(policyId);
+    }
+
+    function test_expirePolicy_noExpirySet() public {
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        // expiry = 0 means no expiry
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, 0);
+        vm.stopPrank();
+
+        // Should revert because expiry == 0
+        vm.expectRevert(MimosaHook.PolicyNotExpired.selector);
+        hook.expirePolicy(policyId);
+    }
+
+    function test_executorTip_paidToExecutor() public {
+        uint128 tipAmount = 0.01e18;
+
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, tipAmount);
+        vm.stopPrank();
+
+        // Deposit should be reduced by inputAmount + tip
+        assertEq(hook.deposits(policyOwner, currency1), DEPOSIT_AMOUNT - POLICY_AMOUNT - tipAmount);
+
+        _movePriceDown();
+
+        address executor = makeAddr("executor");
+        uint256 executorBalBefore = MockERC20(Currency.unwrap(currency1)).balanceOf(executor);
+
+        vm.prank(executor);
+        hook.executePolicy(policyId);
+
+        uint256 executorBalAfter = MockERC20(Currency.unwrap(currency1)).balanceOf(executor);
+        assertEq(executorBalAfter - executorBalBefore, tipAmount, "Executor should receive tip");
+    }
+
+    function test_executorTip_cancelRefundsFull() public {
+        uint128 tipAmount = 0.01e18;
+
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        uint256 policyId = hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, 0, tipAmount);
+
+        uint256 depositAfterRegister = hook.deposits(policyOwner, currency1);
+
+        // Cancel should refund inputAmount + tip
+        hook.cancelPolicy(policyId);
+
+        uint256 depositAfterCancel = hook.deposits(policyOwner, currency1);
+        assertEq(
+            depositAfterCancel,
+            depositAfterRegister + POLICY_AMOUNT + tipAmount,
+            "Cancel should refund inputAmount + executorTip"
+        );
+        vm.stopPrank();
+    }
+
+    function test_expirePolicy_refundsTipAndInput() public {
+        uint128 tipAmount = 0.01e18;
+
+        vm.startPrank(policyOwner);
+        hook.deposit(currency1, DEPOSIT_AMOUNT);
+        uint64 expiryTime = uint64(block.timestamp + 1 hours);
+        uint256 policyId =
+            hook.registerPolicy(poolId, SQRT_PRICE_1_2, false, false, POLICY_AMOUNT, 0, expiryTime, tipAmount);
+        vm.stopPrank();
+
+        uint256 depositBefore = hook.deposits(policyOwner, currency1);
+
+        vm.warp(expiryTime + 1);
+        hook.expirePolicy(policyId);
+
+        uint256 depositAfter = hook.deposits(policyOwner, currency1);
+        assertEq(
+            depositAfter, depositBefore + POLICY_AMOUNT + tipAmount, "Expire should refund inputAmount + executorTip"
+        );
     }
 }

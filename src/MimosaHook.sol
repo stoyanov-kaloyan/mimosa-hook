@@ -37,6 +37,8 @@ contract MimosaHook is BaseHook, IUnlockCallback {
         bool zeroForOne; // swap direction (token0→token1 or vice-versa)
         uint128 inputAmount; // exact-input amount for the swap
         uint128 minOutput; // minimum acceptable output (slippage protection, 0 = no limit)
+        uint64 expiry; // unix timestamp after which the policy can be expired (0 = no expiry)
+        uint128 executorTip; // tip paid to msg.sender of executePolicy, in input currency (0 = no tip)
         bool executed; // double-execution guard
     }
 
@@ -51,6 +53,11 @@ contract MimosaHook is BaseHook, IUnlockCallback {
     /// @notice Pre-deposited token balances.  user -> currency -> amount
     mapping(address => mapping(Currency => uint256)) public deposits;
 
+    /// @notice Active (unexecuted) policy IDs per pool, for off-chain enumeration.
+    mapping(PoolId => uint256[]) internal _activePolicies;
+    /// @notice Index of a policyId within the _activePolicies array (for O(1) removal).
+    mapping(uint256 => uint256) internal _activePolicyIndex;
+
     event PolicyRegistered(
         uint256 indexed policyId,
         address indexed owner,
@@ -58,10 +65,13 @@ contract MimosaHook is BaseHook, IUnlockCallback {
         bool triggerAbove,
         bool zeroForOne,
         uint128 inputAmount,
-        uint128 minOutput
+        uint128 minOutput,
+        uint64 expiry,
+        uint128 executorTip
     );
     event PolicyExecuted(uint256 indexed policyId, int128 amount0, int128 amount1);
-    event PolicyCancelled(uint256 indexed policyId, address indexed owner, uint128 refundedAmount);
+    event PolicyCancelled(uint256 indexed policyId, address indexed owner, uint256 refundedAmount);
+    event PolicyExpired(uint256 indexed policyId, address indexed owner, uint256 refundedAmount);
     event PoolAdded(PoolId indexed poolId);
     event Deposited(address indexed user, Currency indexed currency, uint256 amount);
     event Withdrawn(address indexed user, Currency indexed currency, uint256 amount);
@@ -76,6 +86,8 @@ contract MimosaHook is BaseHook, IUnlockCallback {
     error OnlyPoolManager();
     error TransferFromFailed();
     error SlippageExceeded();
+    error PolicyIsExpired();
+    error PolicyNotExpired();
 
     constructor(IPoolManager _manager) BaseHook(_manager) {}
 
@@ -139,7 +151,9 @@ contract MimosaHook is BaseHook, IUnlockCallback {
         bool triggerAbove,
         bool zeroForOne,
         uint128 inputAmount,
-        uint128 minOutput
+        uint128 minOutput,
+        uint64 expiry,
+        uint128 executorTip
     ) external returns (uint256 policyId) {
         if (!poolInitialized[poolId]) revert PoolNotInitialized();
         if (inputAmount == 0) revert InvalidAmount();
@@ -147,10 +161,11 @@ contract MimosaHook is BaseHook, IUnlockCallback {
         PoolKey memory key = _poolKeys[poolId];
         // Determine which currency the swap consumes
         Currency inputCurrency = zeroForOne ? key.currency0 : key.currency1;
-        if (deposits[msg.sender][inputCurrency] < inputAmount) revert InsufficientDeposit();
+        uint256 totalReserved = uint256(inputAmount) + uint256(executorTip);
+        if (deposits[msg.sender][inputCurrency] < totalReserved) revert InsufficientDeposit();
 
-        // Reserve tokens
-        deposits[msg.sender][inputCurrency] -= inputAmount;
+        // Reserve tokens (inputAmount for the swap + executorTip for the executor)
+        deposits[msg.sender][inputCurrency] -= totalReserved;
 
         policyId = nextPolicyId++;
         policies[policyId] = Policy({
@@ -161,10 +176,16 @@ contract MimosaHook is BaseHook, IUnlockCallback {
             zeroForOne: zeroForOne,
             inputAmount: inputAmount,
             minOutput: minOutput,
+            expiry: expiry,
+            executorTip: executorTip,
             executed: false
         });
 
-        emit PolicyRegistered(policyId, msg.sender, triggerPrice, triggerAbove, zeroForOne, inputAmount, minOutput);
+        _addActivePolicy(poolId, policyId);
+
+        emit PolicyRegistered(
+            policyId, msg.sender, triggerPrice, triggerAbove, zeroForOne, inputAmount, minOutput, expiry, executorTip
+        );
     }
 
     /// @notice Cancel an unexecuted policy and reclaim the reserved input tokens.
@@ -177,11 +198,12 @@ contract MimosaHook is BaseHook, IUnlockCallback {
 
         // Mark as executed to prevent double-cancel
         policy.executed = true;
+        _removeActivePolicy(policy.poolId, policyId);
 
-        // Refund the reserved tokens back to the owner's deposit balance
+        // Refund the reserved tokens (inputAmount + executorTip) back to the owner's deposit balance
         PoolKey memory key = _poolKeys[policy.poolId];
         Currency inputCurrency = policy.zeroForOne ? key.currency0 : key.currency1;
-        uint128 refund = policy.inputAmount;
+        uint256 refund = uint256(policy.inputAmount) + uint256(policy.executorTip);
         deposits[msg.sender][inputCurrency] += refund;
 
         emit PolicyCancelled(policyId, msg.sender, refund);
@@ -195,6 +217,7 @@ contract MimosaHook is BaseHook, IUnlockCallback {
         Policy storage policy = policies[policyId];
         if (policy.owner == address(0)) revert PolicyDoesNotExist();
         if (policy.executed) revert PolicyAlreadyExecuted();
+        if (policy.expiry != 0 && block.timestamp > policy.expiry) revert PolicyIsExpired();
 
         //  1. Read current pool price
         (uint160 currentPrice,,,) = poolManager.getSlot0(policy.poolId);
@@ -206,14 +229,43 @@ contract MimosaHook is BaseHook, IUnlockCallback {
             if (currentPrice > policy.triggerPrice) revert TriggerConditionNotMet();
         }
 
-        //  3. Mark executed BEFORE external call (CEI)
+        //  3. Mark executed & remove from active index BEFORE external calls (CEI)
         policy.executed = true;
+        _removeActivePolicy(policy.poolId, policyId);
 
         //  4. Execute swap via PoolManager unlock -> callback
         bytes memory result = poolManager.unlock(abi.encode(policyId));
         BalanceDelta delta = abi.decode(result, (BalanceDelta));
 
+        //  5. Pay executor tip (if any) from hook holdings
+        uint128 tip = policy.executorTip;
+        if (tip > 0) {
+            PoolKey memory key = _poolKeys[policy.poolId];
+            Currency tipCurrency = policy.zeroForOne ? key.currency0 : key.currency1;
+            tipCurrency.transfer(msg.sender, tip);
+        }
+
         emit PolicyExecuted(policyId, delta.amount0(), delta.amount1());
+    }
+
+    /// @notice Reclaim tokens from an expired policy. Callable by anyone.
+    ///         Expired policies cannot be executed; this returns the reserved
+    ///         tokens (inputAmount + executorTip) to the policy owner's deposit balance.
+    function expirePolicy(uint256 policyId) external {
+        Policy storage policy = policies[policyId];
+        if (policy.owner == address(0)) revert PolicyDoesNotExist();
+        if (policy.executed) revert PolicyAlreadyExecuted();
+        if (policy.expiry == 0 || block.timestamp <= policy.expiry) revert PolicyNotExpired();
+
+        policy.executed = true;
+        _removeActivePolicy(policy.poolId, policyId);
+
+        PoolKey memory key = _poolKeys[policy.poolId];
+        Currency inputCurrency = policy.zeroForOne ? key.currency0 : key.currency1;
+        uint256 refund = uint256(policy.inputAmount) + uint256(policy.executorTip);
+        deposits[policy.owner][inputCurrency] += refund;
+
+        emit PolicyExpired(policyId, policy.owner, refund);
     }
 
     /// @dev Called by PoolManager during unlock().  Performs the swap and settles
@@ -279,6 +331,41 @@ contract MimosaHook is BaseHook, IUnlockCallback {
     /// @notice Retrieve the stored PoolKey for an initialized pool.
     function getPoolKey(PoolId poolId) external view returns (PoolKey memory) {
         return _poolKeys[poolId];
+    }
+
+    /// @notice Retrieve a complete Policy struct by ID.
+    function getPolicy(uint256 policyId) external view returns (Policy memory) {
+        return policies[policyId];
+    }
+
+    /// @notice Return all active (unexecuted, uncancelled) policy IDs for a pool.
+    function getActivePolicies(PoolId poolId) external view returns (uint256[] memory) {
+        return _activePolicies[poolId];
+    }
+
+    /// @notice Return the count of active policies for a pool.
+    function getActivePoliciesCount(PoolId poolId) external view returns (uint256) {
+        return _activePolicies[poolId].length;
+    }
+
+    /// @dev Add a policy to the active index.
+    function _addActivePolicy(PoolId poolId, uint256 policyId) internal {
+        _activePolicyIndex[policyId] = _activePolicies[poolId].length;
+        _activePolicies[poolId].push(policyId);
+    }
+
+    /// @dev Remove a policy from the active index (swap-and-pop for O(1) removal).
+    function _removeActivePolicy(PoolId poolId, uint256 policyId) internal {
+        uint256[] storage arr = _activePolicies[poolId];
+        uint256 index = _activePolicyIndex[policyId];
+        uint256 lastIndex = arr.length - 1;
+        if (index != lastIndex) {
+            uint256 lastId = arr[lastIndex];
+            arr[index] = lastId;
+            _activePolicyIndex[lastId] = index;
+        }
+        arr.pop();
+        delete _activePolicyIndex[policyId];
     }
 
     /// @dev Safe ERC-20 transferFrom that reverts on failure or missing return data.

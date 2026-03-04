@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mimosa — Automated Swaps for Uniswap v4</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌼</text></svg>"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- ─── Header ─────────────────────────────────────────────── -->
+    <header>
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon">🌼</span>
+          <span class="logo-text">mimosa</span>
+        </div>
+        <div class="header-right">
+          <span id="network-badge" class="network-badge hidden"></span>
+          <button id="btn-connect" class="btn btn-accent">
+            Connect Wallet
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ─── Main ───────────────────────────────────────────────── -->
+    <main>
+      <section class="hero">
+        <p class="tagline">Event-driven automation for Uniswap v4.</p>
+        <p class="sub">
+          Set a price trigger. Walk away. Mimosa executes the swap when
+          conditions are met — on-chain, trustless, atomic.
+        </p>
+      </section>
+
+      <!-- ── Status Bar ──────────────────────────────────────────── -->
+      <section id="status-bar" class="status-bar hidden">
+        <div class="stat">
+          <span class="stat-label">Account</span>
+          <span id="account-display" class="stat-value mono">—</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Hook</span>
+          <span id="hook-display" class="stat-value mono">—</span>
+        </div>
+      </section>
+
+      <!-- ── Deposit / Withdraw ──────────────────────────────────── -->
+      <section id="section-deposit" class="card hidden">
+        <h2>Deposit &amp; Withdraw</h2>
+        <p class="card-desc">
+          Fund your account before registering policies. Tokens are held by the
+          hook contract.
+        </p>
+        <div class="form-row">
+          <div class="field">
+            <label for="deposit-token">Token address</label>
+            <input
+              id="deposit-token"
+              type="text"
+              placeholder="0x… (or 0x0 for ETH)"
+            />
+          </div>
+          <div class="field field-sm">
+            <label for="deposit-amount">Amount</label>
+            <input id="deposit-amount" type="text" placeholder="1.0" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="deposit-balance">Your deposit balance</label>
+            <span id="deposit-balance" class="stat-value mono">—</span>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button id="btn-approve" class="btn btn-outline">Approve</button>
+          <button id="btn-deposit" class="btn btn-accent">Deposit</button>
+          <button id="btn-withdraw" class="btn btn-ghost">Withdraw</button>
+        </div>
+      </section>
+
+      <!-- ── Register Policy ─────────────────────────────────────── -->
+      <section id="section-register" class="card hidden">
+        <h2>Register Policy</h2>
+        <p class="card-desc">
+          Define your trigger condition and swap parameters.
+        </p>
+        <div class="form-row">
+          <div class="field">
+            <label for="reg-pool">Pool ID</label>
+            <input id="reg-pool" type="text" placeholder="0x…" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="reg-price">Trigger price (sqrtPriceX96)</label>
+            <input
+              id="reg-price"
+              type="text"
+              placeholder="79228162514264337593543950336"
+            />
+          </div>
+          <div class="field field-sm">
+            <label for="reg-direction">Direction</label>
+            <select id="reg-direction">
+              <option value="below">Execute when ≤ price</option>
+              <option value="above">Execute when ≥ price</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field field-sm">
+            <label for="reg-zfo">Swap side</label>
+            <select id="reg-zfo">
+              <option value="true">token0 → token1</option>
+              <option value="false">token1 → token0</option>
+            </select>
+          </div>
+          <div class="field field-sm">
+            <label for="reg-amount">Input amount</label>
+            <input id="reg-amount" type="text" placeholder="0.1" />
+          </div>
+          <div class="field field-sm">
+            <label for="reg-min">Min output</label>
+            <input id="reg-min" type="text" placeholder="0" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field field-sm">
+            <label for="reg-expiry">Expiry (unix, 0=none)</label>
+            <input id="reg-expiry" type="text" placeholder="0" value="0" />
+          </div>
+          <div class="field field-sm">
+            <label for="reg-tip">Executor tip</label>
+            <input id="reg-tip" type="text" placeholder="0" value="0" />
+          </div>
+        </div>
+        <div class="btn-row">
+          <button id="btn-register" class="btn btn-accent">
+            Register Policy
+          </button>
+        </div>
+      </section>
+
+      <!-- ── Active Policies ─────────────────────────────────────── -->
+      <section id="section-policies" class="card hidden">
+        <div class="card-header-row">
+          <h2>Your Policies</h2>
+          <button id="btn-refresh" class="btn btn-ghost btn-sm">Refresh</button>
+        </div>
+        <div id="policies-list" class="policies-list">
+          <p class="empty-state">No policies yet.</p>
+        </div>
+      </section>
+
+      <!-- ── Transaction Log ─────────────────────────────────────── -->
+      <section id="section-log" class="card hidden">
+        <h2>Activity</h2>
+        <div id="tx-log" class="tx-log">
+          <p class="empty-state">No transactions yet.</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- ─── Footer ───────────────────────────────────────────────── -->
+    <footer>
+      <span>mimosa — hackathon build</span>
+      <a href="https://github.com" target="_blank" rel="noopener">github</a>
+    </footer>
+
+    <!-- ─── Toast ────────────────────────────────────────────────── -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

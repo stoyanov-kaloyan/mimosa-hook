@@ -1,0 +1,32 @@
+export const MIMOSA_HOOK_ABI = [
+  "function deposits(address user, address currency) view returns (uint256)",
+  "function nextPolicyId() view returns (uint256)",
+  "function poolInitialized(bytes32 poolId) view returns (bool)",
+  "function getCurrentPrice(bytes32 poolId) view returns (uint160 sqrtPriceX96)",
+  "function getPolicy(uint256 policyId) view returns (tuple(address owner, bytes32 poolId, uint160 triggerPrice, bool triggerAbove, bool zeroForOne, uint128 inputAmount, uint128 minOutput, uint64 expiry, uint128 executorTip, bool executed))",
+  "function getActivePolicies(bytes32 poolId) view returns (uint256[])",
+  "function getActivePoliciesCount(bytes32 poolId) view returns (uint256)",
+  "function getPoolKey(bytes32 poolId) view returns (tuple(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks))",
+
+  "function deposit(address currency, uint128 amount) payable",
+  "function withdraw(address currency, uint128 amount)",
+  "function registerPolicy(bytes32 poolId, uint160 triggerPrice, bool triggerAbove, bool zeroForOne, uint128 inputAmount, uint128 minOutput, uint64 expiry, uint128 executorTip) returns (uint256 policyId)",
+  "function cancelPolicy(uint256 policyId)",
+  "function executePolicy(uint256 policyId)",
+  "function expirePolicy(uint256 policyId)",
+
+  "event PolicyRegistered(uint256 indexed policyId, address indexed owner, bytes32 indexed poolId, uint160 triggerPrice, bool triggerAbove, bool zeroForOne, uint128 inputAmount, uint128 minOutput, uint64 expiry, uint128 executorTip)",
+  "event PolicyExecuted(uint256 indexed policyId, int128 amount0, int128 amount1)",
+  "event PolicyCancelled(uint256 indexed policyId, address indexed owner, uint256 refundedAmount)",
+  "event PolicyExpired(uint256 indexed policyId, address indexed owner, uint256 refundedAmount)",
+  "event Deposited(address indexed user, address indexed currency, uint256 amount)",
+  "event Withdrawn(address indexed user, address indexed currency, uint256 amount)",
+];
+
+export const ERC20_ABI = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+];

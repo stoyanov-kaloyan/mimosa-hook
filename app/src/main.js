@@ -117,6 +117,18 @@ function truncValue(value) {
   return `${text.slice(0, 10)}…${text.slice(-6)}`;
 }
 
+function formatRatioFromSqrtPrice(value) {
+  if (!value) return "—";
+
+  try {
+    const ratio = (Number(value) / Number(2n ** 96n)) ** 2;
+    if (!Number.isFinite(ratio)) return "—";
+    return `${ratio.toFixed(4)} WETH / mUSD`;
+  } catch {
+    return "—";
+  }
+}
+
 function getMode() {
   return ORDER_PRESETS.find((item) => item.id === selectedModeId) || ORDER_PRESETS[0];
 }
@@ -193,6 +205,10 @@ function renderSummary() {
       <strong>mUSD / WETH on Sepolia</strong>
     </div>
     <div class="summary-line">
+      <span>Live ratio</span>
+      <strong>${currentPrice ? formatRatioFromSqrtPrice(currentPrice) : "Waiting for pool read"}</strong>
+    </div>
+    <div class="summary-line">
       <span>Spend asset</span>
       <strong>${mode.spendSymbol}</strong>
     </div>
@@ -201,8 +217,8 @@ function renderSummary() {
       <strong>${percent}% ${triggerLabel} live price</strong>
     </div>
     <div class="summary-line">
-      <span>Computed trigger</span>
-      <strong class="mono">${triggerPrice ? truncValue(triggerPrice) : "Waiting for pool read"}</strong>
+      <span>Trigger price</span>
+      <strong>${triggerPrice ? formatRatioFromSqrtPrice(triggerPrice) : "Waiting for pool read"}</strong>
     </div>
     <div class="summary-line">
       <span>Amount</span>
@@ -249,7 +265,8 @@ async function refreshPoolState() {
     poolReady = initialized;
     poolStatus.textContent = initialized ? "Live and ready" : "Pool not registered";
     currentPrice = initialized ? await readCurrentPrice(DEMO_DEFAULTS.demoPoolId) : null;
-    livePrice.textContent = currentPrice ? truncValue(currentPrice) : "—";
+    livePrice.textContent = currentPrice ? formatRatioFromSqrtPrice(currentPrice) : "—";
+    livePrice.title = currentPrice ? currentPrice.toString() : "";
   } catch (error) {
     poolReady = false;
     currentPrice = null;
@@ -356,7 +373,7 @@ function renderPolicyCard(policy) {
         <span>${status}</span>
       </div>
       <div class="policy-grid">
-        <span>Trigger <strong class="mono">${truncValue(policy.triggerPrice)}</strong></span>
+        <span>Trigger <strong>${formatRatioFromSqrtPrice(policy.triggerPrice)}</strong></span>
         <span>Input <strong>${formatAmount(policy.inputAmount)}</strong></span>
         <span>Expiry <strong>${expiry}</strong></span>
       </div>

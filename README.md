@@ -5,7 +5,7 @@ Uniswap v4 hook for reactive limit-style execution. Users deposit funds into the
 ## Hook addresses
   - MimosaHook: 0x892D42B22Ac103C682e43b945c81C4572E269000
   - MimosaCallback: 0x673e2D03864C2c2Eb819646c7DDa3B5047aE627d
-  - MimosaReactive: 0xC9AFf43028B7578F42C2eF08C51B48F3d16341E9
+  - MimosaReactive: 0xe407a500F9c4948a53F7d51F025F74F62b7CE801
 
 ## What it does
 
@@ -113,18 +113,29 @@ forge script script/DeployReactive.s.sol:DeployReactive \
 Then activate subscriptions manually on Reactive Network:
 
 ```bash
-cast send 0xC9AFf43028B7578F42C2eF08C51B48F3d16341E9 \
+cast send 0xe407a500F9c4948a53F7d51F025F74F62b7CE801 \
   "activateHookSubscriptions()" \
   --rpc-url "$REACTIVE_RPC" \
   --account mimosa-deployer
 
-cast send 0xC9AFf43028B7578F42C2eF08C51B48F3d16341E9 \
+cast send 0xe407a500F9c4948a53F7d51F025F74F62b7CE801 \
   "activateSwapSubscription()" \
   --rpc-url "$REACTIVE_RPC" \
   --account mimosa-deployer
 ```
 
 This manual two-step activation is the flow that succeeded in practice. Constructor-time or single-step subscription activation reverted against the Reactive system contract.
+
+If subscriptions later show as inactive after the contract runs out of `lREACT`, refuel the contract and explicitly re-arm them:
+
+```bash
+cast send 0xe407a500F9c4948a53F7d51F025F74F62b7CE801 \
+  "repairSubscriptions()" \
+  --rpc-url "$REACTIVE_RPC" \
+  --account mimosa-deployer
+```
+
+That repair path is available in the patched `MimosaReactive` contract and should be used for future deployments.
 
 ### Deployment manifests
 

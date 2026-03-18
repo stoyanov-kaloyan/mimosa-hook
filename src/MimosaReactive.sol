@@ -98,6 +98,8 @@ contract MimosaReactive is IReactive, AbstractReactive {
     event PolicyTriggered(uint256 indexed policyId, uint160 sqrtPriceX96);
     event HookSubscriptionsActivated();
     event SwapSubscriptionActivated();
+    event HookSubscriptionsRepaired();
+    event SwapSubscriptionRepaired();
 
     error Unauthorized();
     error HookSubscriptionsAlreadyActive();
@@ -129,18 +131,14 @@ contract MimosaReactive is IReactive, AbstractReactive {
     ///      system contract can reject subscriptions from contracts still being created.
     function activateHookSubscriptions() external rnOnly onlyOwner {
         if (hookSubscriptionsActive) revert HookSubscriptionsAlreadyActive();
-        // 2. Policy lifecycle events on MimosaHook
-        service.subscribe(originChainId, mimosaHook, POLICY_REGISTERED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        service.subscribe(originChainId, mimosaHook, POLICY_EXECUTED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        service.subscribe(originChainId, mimosaHook, POLICY_CANCELLED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        service.subscribe(originChainId, mimosaHook, POLICY_EXPIRED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        _subscribeHookEvents();
         hookSubscriptionsActive = true;
         emit HookSubscriptionsActivated();
     }
 
     function activateSwapSubscription() external rnOnly onlyOwner {
         if (swapSubscriptionActive) revert SwapSubscriptionAlreadyActive();
-        service.subscribe(originChainId, poolManager, SWAP_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        _subscribeSwapEvents();
         swapSubscriptionActive = true;
         emit SwapSubscriptionActivated();
     }
@@ -152,6 +150,32 @@ contract MimosaReactive is IReactive, AbstractReactive {
         if (!swapSubscriptionActive) {
             this.activateSwapSubscription();
         }
+    }
+
+    /// @notice Re-register hook event subscriptions after they became inactive.
+    /// @dev Intended as an explicit repair path after the contract balance reached zero
+    ///      and the Reactive explorer shows the subscriptions as inactive.
+    function resubscribeHookSubscriptions() external rnOnly onlyOwner {
+        _subscribeHookEvents();
+        hookSubscriptionsActive = true;
+        emit HookSubscriptionsRepaired();
+    }
+
+    /// @notice Re-register the PoolManager Swap subscription after it became inactive.
+    function resubscribeSwapSubscription() external rnOnly onlyOwner {
+        _subscribeSwapEvents();
+        swapSubscriptionActive = true;
+        emit SwapSubscriptionRepaired();
+    }
+
+    /// @notice Re-register all origin-chain subscriptions after refueling the contract.
+    function repairSubscriptions() external rnOnly onlyOwner {
+        _subscribeHookEvents();
+        _subscribeSwapEvents();
+        hookSubscriptionsActive = true;
+        swapSubscriptionActive = true;
+        emit HookSubscriptionsRepaired();
+        emit SwapSubscriptionRepaired();
     }
 
     // ── IReactive ────────────────────────────────────────────────────
@@ -231,6 +255,17 @@ contract MimosaReactive is IReactive, AbstractReactive {
                 emit Callback(originChainId, callbackContract, CALLBACK_GAS_LIMIT, payload);
             }
         }
+    }
+
+    function _subscribeHookEvents() internal {
+        service.subscribe(originChainId, mimosaHook, POLICY_REGISTERED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        service.subscribe(originChainId, mimosaHook, POLICY_EXECUTED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        service.subscribe(originChainId, mimosaHook, POLICY_CANCELLED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        service.subscribe(originChainId, mimosaHook, POLICY_EXPIRED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+    }
+
+    function _subscribeSwapEvents() internal {
+        service.subscribe(originChainId, poolManager, SWAP_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
     }
 
     // ── Policy Index (swap-and-pop) ──────────────────────────────────

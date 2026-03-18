@@ -258,10 +258,18 @@ contract MimosaReactive is IReactive, AbstractReactive {
     }
 
     function _subscribeHookEvents() internal {
-        service.subscribe(originChainId, mimosaHook, POLICY_REGISTERED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        service.subscribe(originChainId, mimosaHook, POLICY_EXECUTED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        service.subscribe(originChainId, mimosaHook, POLICY_CANCELLED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        service.subscribe(originChainId, mimosaHook, POLICY_EXPIRED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        service.subscribe(
+            originChainId, mimosaHook, POLICY_REGISTERED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
+        service.subscribe(
+            originChainId, mimosaHook, POLICY_EXECUTED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
+        service.subscribe(
+            originChainId, mimosaHook, POLICY_CANCELLED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
+        service.subscribe(
+            originChainId, mimosaHook, POLICY_EXPIRED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
     }
 
     function _subscribeSwapEvents() internal {

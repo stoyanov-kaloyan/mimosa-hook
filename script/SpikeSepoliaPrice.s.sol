@@ -42,8 +42,7 @@ contract SpikeSepoliaPrice is Script {
         require(cfg.tokenA != cfg.tokenB, "SpikeSepoliaPrice: identical tokens");
         require(cfg.amountIn > 0, "SpikeSepoliaPrice: zero amount");
 
-        (address token0, address token1) =
-            cfg.tokenA < cfg.tokenB ? (cfg.tokenA, cfg.tokenB) : (cfg.tokenB, cfg.tokenA);
+        (address token0, address token1) = cfg.tokenA < cfg.tokenB ? (cfg.tokenA, cfg.tokenB) : (cfg.tokenB, cfg.tokenA);
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(token0),
             currency1: Currency.wrap(token1),

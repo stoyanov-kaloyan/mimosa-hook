@@ -17,6 +17,7 @@
           <div class="brand-block">
             <p class="eyebrow">Reactive Order Demo</p>
             <h1>Mimosa</h1>
+            <p class="brand-note">Automated Uniswap v4 orders with a distinct on-chain identity.</p>
           </div>
           <div class="header-actions">
             <span id="network-badge" class="tag hidden"></span>
@@ -25,12 +26,19 @@
           </div>
         </header>
 
-        <section class="hero-strip">
-          <div class="hero-copy">
-            <p class="hero-title">Uniswap v4 hook + Reactive callback execution on Sepolia.</p>
-            <p class="hero-subtitle">Pick a preset, approve the spend token, and create a live order against the deployed demo pool.</p>
+        <section class="brand-stage">
+          <div class="brand-panel brand-panel-left">
+            <p class="section-kicker">Sepolia Live</p>
+            <p class="hero-title">Hook-native conditional orders with a clean demo flow.</p>
+            <p class="hero-subtitle">Create an order, push the pool price, and watch execution move from threshold to settlement.</p>
           </div>
-          <div class="hero-meta">
+
+          <div class="brand-mark-shell" aria-hidden="true">
+            <div class="brand-mark-glow"></div>
+            <img class="brand-mark" src="/mimosa_logo.png" alt="Mimosa logo" />
+          </div>
+
+          <div class="brand-panel brand-panel-right">
             <div class="meta-chip">
               <span>Pool</span>
               <strong>mUSD / WETH</strong>
@@ -38,6 +46,10 @@
             <div class="meta-chip">
               <span>Hook</span>
               <strong id="hook-pill">Pending</strong>
+            </div>
+            <div class="meta-chip">
+              <span>Mode</span>
+              <strong>Reactive execution</strong>
             </div>
           </div>
         </section>

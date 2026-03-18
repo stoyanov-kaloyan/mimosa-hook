@@ -8,135 +8,148 @@
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>✿</text></svg>"
     />
-    <script type="module" crossorigin src="/assets/index-C6DeHxpK.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-j-PufWok.css">
+    <script type="module" crossorigin src="/assets/index-Cu0riBaq.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-R9PQTZHJ.css">
   </head>
   <body>
-    <header class="topbar">
-      <div class="topbar-inner">
-        <div>
-          <p class="eyebrow">Sepolia Demo</p>
-          <h1>Mimosa</h1>
-        </div>
-        <div class="topbar-actions">
-          <span id="network-badge" class="pill hidden"></span>
-          <button id="btn-connect" class="btn btn-accent">Connect Wallet</button>
-        </div>
-      </div>
-    </header>
-
-    <main class="page">
-      <section class="hero-copy">
-        <p class="hero-kicker">Reactive order demo</p>
-        <p class="hero-text">
-          One pool, two presets, one short flow. Approve the spend token once,
-          then create a live reactive order against the deployed Sepolia pool.
-        </p>
-      </section>
-
-      <section class="trade-card">
-        <div class="trade-head">
-          <div>
-            <p class="card-kicker">Live pair</p>
-            <h2>mUSD / WETH</h2>
+    <main class="shell">
+      <section class="app-frame">
+        <header class="app-header">
+          <div class="brand-block">
+            <p class="eyebrow">Reactive Order Demo</p>
+            <h1>Mimosa</h1>
           </div>
-          <div class="meta-pills">
-            <span id="account-pill" class="pill subtle">No wallet</span>
-            <span id="hook-pill" class="pill subtle">Hook pending</span>
+          <div class="header-actions">
+            <span id="network-badge" class="tag hidden"></span>
+            <span id="account-pill" class="tag muted">No wallet</span>
+            <button id="btn-connect" class="btn btn-accent">Connect Wallet</button>
           </div>
-        </div>
+        </header>
 
-        <div class="status-grid">
-          <div class="status-box">
-            <span>Status</span>
-            <strong id="pool-status">Unchecked</strong>
+        <section class="hero-strip">
+          <div class="hero-copy">
+            <p class="hero-title">Uniswap v4 hook + Reactive callback execution on Sepolia.</p>
+            <p class="hero-subtitle">Pick a preset, approve the spend token, and create a live order against the deployed demo pool.</p>
           </div>
-          <div class="status-box">
-            <span>Live `sqrtPriceX96`</span>
-            <strong id="live-price" class="mono">—</strong>
-          </div>
-          <div class="status-box">
-            <span>Hook deposit</span>
-            <strong id="deposit-balance">—</strong>
-          </div>
-          <div class="status-box">
-            <span>Wallet spend balance</span>
-            <strong id="wallet-balance">—</strong>
-          </div>
-          <div class="status-box">
-            <span>Approval</span>
-            <strong id="allowance-badge">Connect wallet</strong>
-          </div>
-        </div>
-
-        <div class="section-label">Choose the demo order</div>
-        <div class="mode-grid">
-          <button class="mode-card is-active" data-mode="buy-dip">
-            <span>Buy The Dip</span>
-            <small>Spend WETH when price trades lower</small>
-          </button>
-          <button class="mode-card" data-mode="sell-rally">
-            <span>Sell The Rally</span>
-            <small>Spend mUSD when price trades higher</small>
-          </button>
-        </div>
-
-        <div class="input-grid">
-          <label class="field">
-            <span>Amount</span>
-            <input id="order-amount" type="text" placeholder="0.10" />
-          </label>
-          <label class="field">
-            <span>Expiry</span>
-            <select id="expiry-select"></select>
-          </label>
-        </div>
-
-        <div id="amount-quick-row" class="chip-row"></div>
-
-        <div class="section-label">Trigger band from live price</div>
-        <div class="chip-row">
-          <button class="chip-btn is-active" data-trigger="500">5%</button>
-          <button class="chip-btn" data-trigger="1000">10%</button>
-          <button class="chip-btn" data-trigger="2000">20%</button>
-        </div>
-
-        <div id="order-summary" class="summary-card"></div>
-
-        <div class="action-row">
-          <button id="btn-approve" class="btn btn-outline">Approve Spend Token</button>
-          <button id="btn-submit" class="btn btn-accent">Create Demo Order</button>
-        </div>
-
-        <p class="helper-copy">
-          `Create Demo Order` sends two wallet prompts in sequence: deposit to the hook, then register the reactive policy against the live demo pool.
-        </p>
-      </section>
-
-      <section class="stack">
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="card-kicker">Your demo orders</p>
-              <h3>Open orders</h3>
+          <div class="hero-meta">
+            <div class="meta-chip">
+              <span>Pool</span>
+              <strong>mUSD / WETH</strong>
             </div>
-            <button id="btn-refresh" class="btn btn-ghost btn-small">Refresh</button>
-          </div>
-          <div id="policies-list" class="policies-list">
-            <p class="empty-state">Connect a wallet to see demo orders.</p>
+            <div class="meta-chip">
+              <span>Hook</span>
+              <strong id="hook-pill">Pending</strong>
+            </div>
           </div>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="card-kicker">Activity</p>
-              <h3>Transaction log</h3>
+        <section class="main-grid">
+          <article class="surface surface-left">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Create Order</p>
+                <h2>Trade Setup</h2>
+              </div>
             </div>
-          </div>
-          <div id="tx-log" class="tx-log">
-            <p class="empty-state">No activity yet.</p>
-          </div>
+
+            <div class="status-grid">
+              <div class="status-box">
+                <span>Status</span>
+                <strong id="pool-status">Unchecked</strong>
+              </div>
+              <div class="status-box">
+                <span>Live Price</span>
+                <strong id="live-price" class="mono">—</strong>
+              </div>
+              <div class="status-box">
+                <span>Approval</span>
+                <strong id="allowance-badge">Connect wallet</strong>
+              </div>
+            </div>
+
+            <div class="section-block">
+              <p class="section-label">Order Side</p>
+              <div class="mode-grid">
+                <button class="mode-card is-active" data-mode="buy-dip">
+                  <span>Buy The Dip</span>
+                  <small>Spend WETH after price drops.</small>
+                </button>
+                <button class="mode-card" data-mode="sell-rally">
+                  <span>Sell The Rally</span>
+                  <small>Spend mUSD after price rises.</small>
+                </button>
+              </div>
+            </div>
+
+            <div class="section-block compact">
+              <div class="input-grid">
+                <label class="field">
+                  <span>Amount</span>
+                  <input id="order-amount" type="text" placeholder="0.10" />
+                </label>
+                <label class="field">
+                  <span>Expiry</span>
+                  <select id="expiry-select"></select>
+                </label>
+              </div>
+              <div id="amount-quick-row" class="chip-row"></div>
+            </div>
+
+            <div class="section-block compact">
+              <p class="section-label">Trigger Band</p>
+              <div class="chip-row">
+                <button class="chip-btn is-active" data-trigger="500">5%</button>
+                <button class="chip-btn" data-trigger="1000">10%</button>
+                <button class="chip-btn" data-trigger="2000">20%</button>
+              </div>
+            </div>
+
+            <div id="order-summary" class="summary-card"></div>
+
+            <div class="action-row">
+              <button id="btn-approve" class="btn btn-outline">Approve Token</button>
+              <button id="btn-submit" class="btn btn-accent">Create Demo Order</button>
+            </div>
+          </article>
+
+          <article class="surface surface-right">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Monitor</p>
+                <h2>Live State</h2>
+              </div>
+              <button id="btn-refresh" class="btn btn-ghost btn-small">Refresh</button>
+            </div>
+
+            <div class="info-grid">
+              <div class="info-box">
+                <span>Hook deposit</span>
+                <strong id="deposit-balance">—</strong>
+              </div>
+              <div class="info-box">
+                <span>Wallet spend balance</span>
+                <strong id="wallet-balance">—</strong>
+              </div>
+            </div>
+
+            <div class="subpanel">
+              <div class="subpanel-head">
+                <p class="section-label">Open Orders</p>
+              </div>
+              <div id="policies-list" class="policies-list">
+                <p class="empty-state">Connect a wallet to see demo orders.</p>
+              </div>
+            </div>
+
+            <div class="subpanel">
+              <div class="subpanel-head">
+                <p class="section-label">Activity</p>
+              </div>
+              <div id="tx-log" class="tx-log">
+                <p class="empty-state">No activity yet.</p>
+              </div>
+            </div>
+          </article>
         </section>
       </section>
     </main>

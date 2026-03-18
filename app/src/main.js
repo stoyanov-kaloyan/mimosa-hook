@@ -304,13 +304,53 @@ function syncActionState() {
   btnSubmit.disabled = !ready;
 }
 
+function isPolicyExpired(policy) {
+  return Boolean(policy.expiry) && Math.floor(Date.now() / 1000) > policy.expiry;
+}
+
+function isTriggerMet(policy) {
+  if (!currentPrice) return false;
+
+  const live = BigInt(currentPrice);
+  const trigger = BigInt(policy.triggerPrice);
+  return policy.triggerAbove ? live >= trigger : live <= trigger;
+}
+
 function renderPolicyCard(policy) {
   const mode = policy.zeroForOne ? "Sell rally" : "Buy dip";
-  const status = policy.executed ? "Executed" : "Active";
+  const expired = isPolicyExpired(policy);
+  const triggerMet = isTriggerMet(policy);
+  const status = policy.terminalState === "executed"
+    ? "Executed"
+    : policy.terminalState === "cancelled"
+      ? "Cancelled"
+      : policy.terminalState === "expired"
+        ? "Expired"
+    : policy.executed
+      ? "Closed"
+    : expired
+      ? "Expired"
+      : triggerMet
+        ? "Ready"
+        : "Watching";
   const expiry = policy.expiry ? new Date(policy.expiry * 1000).toLocaleString() : "None";
+  const actionMarkup = policy.executed || policy.terminalState !== "active"
+    ? ""
+    : expired
+      ? `<div class="policy-actions">
+          <button class="btn btn-accent btn-small" data-action="expire" data-id="${policy.id}">Expire</button>
+        </div>`
+      : triggerMet
+        ? `<div class="policy-actions">
+            <button class="btn btn-accent btn-small" data-action="execute" data-id="${policy.id}">Execute</button>
+            <button class="btn btn-ghost btn-small" data-action="cancel" data-id="${policy.id}">Cancel</button>
+          </div>`
+        : `<div class="policy-actions">
+            <button class="btn btn-ghost btn-small" data-action="cancel" data-id="${policy.id}">Cancel</button>
+          </div>`;
 
   return `
-    <article class="policy-card ${policy.executed ? "is-done" : ""}">
+    <article class="policy-card ${policy.executed || policy.terminalState !== "active" ? "is-done" : ""}">
       <div class="policy-head">
         <strong>#${policy.id} ${mode}</strong>
         <span>${status}</span>
@@ -320,17 +360,7 @@ function renderPolicyCard(policy) {
         <span>Input <strong>${formatAmount(policy.inputAmount)}</strong></span>
         <span>Expiry <strong>${expiry}</strong></span>
       </div>
-      ${
-        policy.executed
-          ? ""
-          : `
-            <div class="policy-actions">
-              <button class="btn btn-ghost btn-small" data-action="execute" data-id="${policy.id}">Execute</button>
-              <button class="btn btn-ghost btn-small" data-action="cancel" data-id="${policy.id}">Cancel</button>
-              ${policy.expiry ? `<button class="btn btn-ghost btn-small" data-action="expire" data-id="${policy.id}">Expire</button>` : ""}
-            </div>
-          `
-      }
+      ${actionMarkup}
     </article>
   `;
 }
@@ -497,7 +527,6 @@ btnSubmit.addEventListener("click", async () => {
 btnRefresh.addEventListener("click", async () => {
   try {
     await refreshDemo();
-    logTx("Refreshed live state");
   } catch (error) {
     toast(getErrorMessage(error), true);
   }

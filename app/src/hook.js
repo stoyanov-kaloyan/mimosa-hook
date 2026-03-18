@@ -132,7 +132,27 @@ export async function fetchUserPolicies(account) {
     }
   }
 
-  return policies;
+  const enriched = await Promise.all(
+    policies.map(async (policy) => ({
+      ...policy,
+      terminalState: await readPolicyTerminalState(policy.id),
+    })),
+  );
+
+  return enriched;
+}
+
+async function readPolicyTerminalState(policyId) {
+  const [executedLogs, cancelledLogs, expiredLogs] = await Promise.all([
+    hookContract.queryFilter(hookContract.filters.PolicyExecuted(policyId)),
+    hookContract.queryFilter(hookContract.filters.PolicyCancelled(policyId)),
+    hookContract.queryFilter(hookContract.filters.PolicyExpired(policyId)),
+  ]);
+
+  if (executedLogs.length) return "executed";
+  if (cancelledLogs.length) return "cancelled";
+  if (expiredLogs.length) return "expired";
+  return "active";
 }
 
 function policyToObj(p) {

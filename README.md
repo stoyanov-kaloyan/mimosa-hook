@@ -2,6 +2,11 @@
 
 Uniswap v4 hook for reactive limit-style execution. Users deposit funds into the hook, register a price policy, and Reactive Network delivers a callback when pool activity crosses the configured threshold.
 
+## Hook addresses
+  - MimosaHook: 0x892D42B22Ac103C682e43b945c81C4572E269000
+  - MimosaCallback: 0x673e2D03864C2c2Eb819646c7DDa3B5047aE627d
+  - MimosaReactive: 0xC9AFf43028B7578F42C2eF08C51B48F3d16341E9
+
 ## What it does
 
 `MimosaHook` turns Uniswap v4 swaps into event-driven orders:
@@ -67,39 +72,69 @@ Current result: `45/45` tests passing.
 
 Important operational detail: `MimosaCallback` stores the deployer as its allowed ReactVM ID through `AbstractCallback`, so `MimosaReactive` and `MimosaCallback` should be deployed by the same broadcaster.
 
-### One-command deploy
+### Sepolia deployment that succeeded
+
+Origin chain:
+
+- Chain ID: `11155111`
+- PoolManager: `0xE03A1074c86CFeDd5C142C4F04F1a1536e203543`
+- Callback Proxy: `0xc9f36411C9897e7F959D99ffca2a0Ba7ee0D7bDA`
+
+Reactive chain:
+
+- Reactive Lasna (`5318007`)
+- RPC: `https://lasna-rpc.rnk.dev/`
+
+Deploy the origin-side contracts first:
 
 ```bash
-cp .env.example .env
-source .env
-./script/deploy.sh
-```
-
-### Manual deploy
-
-Deploy origin-side contracts:
-
-```bash
-POOL_MANAGER=0x... CALLBACK_PROXY=0x... \
-forge script script/DeployMimosaHook.s.sol \
+forge script script/DeployMimosaHook.s.sol:DeployOrigin \
   --rpc-url "$ORIGIN_RPC" \
-  --broadcast \
-  --verify
-```
-
-Deploy the Reactive contract:
-
-```bash
-ORIGIN_CHAIN_ID=11155111 \
-HOOK=0x... \
-CALLBACK=0x... \
-REACTIVE_DEPOSIT_WEI=0 \
-forge script script/DeployReactive.s.sol \
-  --rpc-url "$REACTIVE_RPC" \
+  --account mimosa-deployer \
   --broadcast
 ```
 
-Both scripts write JSON manifests into `deployments/` for the frontend.
+Deploy the reactive contract without auto-activating subscriptions:
+
+```bash
+export ORIGIN_CHAIN_ID=11155111
+export POOL_MANAGER=0xE03A1074c86CFeDd5C142C4F04F1a1536e203543
+export HOOK=0x892D42B22Ac103C682e43b945c81C4572E269000
+export CALLBACK=0x673e2D03864C2c2Eb819646c7DDa3B5047aE627d
+export REACTIVE_DEPOSIT_WEI=0
+export ACTIVATE_SUBSCRIPTIONS=false
+
+forge script script/DeployReactive.s.sol:DeployReactive \
+  --rpc-url "$REACTIVE_RPC" \
+  --account mimosa-deployer \
+  --broadcast
+```
+
+Then activate subscriptions manually on Reactive Network:
+
+```bash
+cast send 0xC9AFf43028B7578F42C2eF08C51B48F3d16341E9 \
+  "activateHookSubscriptions()" \
+  --rpc-url "$REACTIVE_RPC" \
+  --account mimosa-deployer
+
+cast send 0xC9AFf43028B7578F42C2eF08C51B48F3d16341E9 \
+  "activateSwapSubscription()" \
+  --rpc-url "$REACTIVE_RPC" \
+  --account mimosa-deployer
+```
+
+This manual two-step activation is the flow that succeeded in practice. Constructor-time or single-step subscription activation reverted against the Reactive system contract.
+
+### Deployment manifests
+
+Write the final addresses into:
+
+- `deployments/11155111.json`
+- `deployments/reactive-5318007.json`
+- `app/public/mimosa.json`
+
+so the frontend can resolve the live deployment automatically.
 
 ## Project layout
 

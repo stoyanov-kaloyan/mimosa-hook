@@ -71,6 +71,9 @@ contract MimosaReactive is IReactive, AbstractReactive {
     address public poolManager;
     address public mimosaHook;
     address public callbackContract;
+    address public owner;
+    bool public hookSubscriptionsActive;
+    bool public swapSubscriptionActive;
 
     // ── ReactVM Policy Tracking ──────────────────────────────────────
 
@@ -93,6 +96,12 @@ contract MimosaReactive is IReactive, AbstractReactive {
     event PolicyUntracked(uint256 indexed policyId);
     event SwapDetected(bytes32 indexed poolId, uint160 sqrtPriceX96);
     event PolicyTriggered(uint256 indexed policyId, uint160 sqrtPriceX96);
+    event HookSubscriptionsActivated();
+    event SwapSubscriptionActivated();
+
+    error Unauthorized();
+    error HookSubscriptionsAlreadyActive();
+    error SwapSubscriptionAlreadyActive();
 
     constructor(uint256 _originChainId, address _poolManager, address _mimosaHook, address _callbackContract) payable {
         // Derive event topic hashes from mirror interface selectors.
@@ -107,26 +116,41 @@ contract MimosaReactive is IReactive, AbstractReactive {
         poolManager = _poolManager;
         mimosaHook = _mimosaHook;
         callbackContract = _callbackContract;
+        owner = msg.sender;
+    }
 
-        if (!vm) {
-            // ── Origin-chain subscriptions ───────────────────────────
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert Unauthorized();
+        _;
+    }
 
-            // 1. All Swap events on the PoolManager (any pool)
-            service.subscribe(originChainId, poolManager, SWAP_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+    /// @notice Activate origin-chain subscriptions after deployment.
+    /// @dev Done post-deploy instead of in the constructor because the Reactive
+    ///      system contract can reject subscriptions from contracts still being created.
+    function activateHookSubscriptions() external rnOnly onlyOwner {
+        if (hookSubscriptionsActive) revert HookSubscriptionsAlreadyActive();
+        // 2. Policy lifecycle events on MimosaHook
+        service.subscribe(originChainId, mimosaHook, POLICY_REGISTERED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        service.subscribe(originChainId, mimosaHook, POLICY_EXECUTED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        service.subscribe(originChainId, mimosaHook, POLICY_CANCELLED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        service.subscribe(originChainId, mimosaHook, POLICY_EXPIRED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        hookSubscriptionsActive = true;
+        emit HookSubscriptionsActivated();
+    }
 
-            // 2. Policy lifecycle events on MimosaHook
-            service.subscribe(
-                originChainId, mimosaHook, POLICY_REGISTERED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
-            );
-            service.subscribe(
-                originChainId, mimosaHook, POLICY_EXECUTED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
-            );
-            service.subscribe(
-                originChainId, mimosaHook, POLICY_CANCELLED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
-            );
-            service.subscribe(
-                originChainId, mimosaHook, POLICY_EXPIRED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
-            );
+    function activateSwapSubscription() external rnOnly onlyOwner {
+        if (swapSubscriptionActive) revert SwapSubscriptionAlreadyActive();
+        service.subscribe(originChainId, poolManager, SWAP_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        swapSubscriptionActive = true;
+        emit SwapSubscriptionActivated();
+    }
+
+    function activateSubscriptions() external rnOnly onlyOwner {
+        if (!hookSubscriptionsActive) {
+            this.activateHookSubscriptions();
+        }
+        if (!swapSubscriptionActive) {
+            this.activateSwapSubscription();
         }
     }
 

@@ -136,6 +136,69 @@ Write the final addresses into:
 
 so the frontend can resolve the live deployment automatically.
 
+### Demo pool on Sepolia
+
+The current Sepolia demo pool uses:
+
+- `token0`: `0x5B753e64d1B87fBC350e9adC1758eecf52c32Ae5` (`Mimosa Demo USD`)
+- `token1`: `0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14` (Sepolia WETH)
+- `fee`: `3000`
+- `tickSpacing`: `60`
+- `sqrtPriceX96`: `79228162514264337593543950336`
+- `poolId`: `0xf0e88c3617e824a1f559635edca7b5a68215c4e80d60e15903f144c8c9f2a679`
+
+Deploy a demo token if you want a fresh asset:
+
+```bash
+export TOKEN_NAME="Mimosa Demo USD"
+export TOKEN_SYMBOL="mUSD"
+export TOKEN_DECIMALS=18
+export TOKEN_MINT_AMOUNT=1000000000000000000000000
+export TOKEN_MINT_TO=$(cast wallet address --account mimosa-deployer)
+
+forge script script/DeployDemoToken.s.sol:DeployDemoToken \
+  --rpc-url "$ORIGIN_RPC" \
+  --account mimosa-deployer \
+  --broadcast
+```
+
+Initialize the hook-enabled pool:
+
+```bash
+export HOOK=0x892D42B22Ac103C682e43b945c81C4572E269000
+export TOKEN_A=0x5B753e64d1B87fBC350e9adC1758eecf52c32Ae5
+export TOKEN_B=0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14
+export POOL_FEE=3000
+export TICK_SPACING=60
+export SQRT_PRICE_X96=79228162514264337593543950336
+
+forge script script/InitSepoliaPool.s.sol:InitSepoliaPool \
+  --rpc-url "$ORIGIN_RPC" \
+  --account mimosa-deployer \
+  --broadcast
+```
+
+Seed the pool with full-range liquidity:
+
+```bash
+export HOOK=0x892D42B22Ac103C682e43b945c81C4572E269000
+export TOKEN_A=0x5B753e64d1B87fBC350e9adC1758eecf52c32Ae5
+export TOKEN_B=0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14
+export TOKEN_A_AMOUNT=1000000000000000000000
+export TOKEN_B_AMOUNT=1000000000000000000
+export POOL_FEE=3000
+export TICK_SPACING=60
+export SQRT_PRICE_X96=79228162514264337593543950336
+export WRAP_WETH=true
+
+forge script script/AddSepoliaLiquidity.s.sol:AddSepoliaLiquidity \
+  --rpc-url "$ORIGIN_RPC" \
+  --account mimosa-deployer \
+  --broadcast
+```
+
+That script wraps the WETH leg if `WRAP_WETH=true`, approves Permit2 plus the Sepolia PositionManager, and mints a full-range position NFT into the initialized pool.
+
 ## Project layout
 
 ```text

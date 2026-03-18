@@ -50,6 +50,16 @@ export async function approve(tokenAddress, signer) {
   return tx;
 }
 
+export async function readAllowance(tokenAddress, owner) {
+  const token = new ethers.Contract(tokenAddress, ERC20_ABI, hookContract.runner);
+  return token.allowance(owner, hookAddress);
+}
+
+export async function readTokenBalance(tokenAddress, owner) {
+  const token = new ethers.Contract(tokenAddress, ERC20_ABI, hookContract.runner);
+  return token.balanceOf(owner);
+}
+
 export async function deposit(currency, amount, isETH = false) {
   const opts = isETH ? { value: amount } : {};
   const tx = await hookContract.deposit(currency, amount, opts);

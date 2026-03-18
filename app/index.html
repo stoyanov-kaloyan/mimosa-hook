@@ -6,232 +6,139 @@
     <title>Mimosa Demo</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌼</text></svg>"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>✿</text></svg>"
     />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <header>
-      <div class="header-inner">
-        <div class="logo">
-          <span class="logo-icon">🌼</span>
-          <span class="logo-text">mimosa</span>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div>
+          <p class="eyebrow">Sepolia Demo</p>
+          <h1>Mimosa</h1>
         </div>
-        <div class="header-right">
-          <span id="network-badge" class="network-badge hidden"></span>
+        <div class="topbar-actions">
+          <span id="network-badge" class="pill hidden"></span>
           <button id="btn-connect" class="btn btn-accent">Connect Wallet</button>
         </div>
       </div>
     </header>
 
-    <main>
-      <section class="hero">
-        <p class="eyebrow">Sepolia demo</p>
-        <p class="tagline">Reactive orders for a Uniswap v4 hook.</p>
-        <p class="sub">
-          Pick a demo policy, fund the hook, and register a trigger. Reactive
-          Network watches pool activity and delivers the callback when the price
-          condition is crossed.
+    <main class="page">
+      <section class="hero-copy">
+        <p class="hero-kicker">Reactive order demo</p>
+        <p class="hero-text">
+          One pool, two presets, one short flow. Approve the spend token once,
+          then create a live reactive order against the deployed Sepolia pool.
         </p>
-        <div class="hero-pills">
-          <span class="pill">Uniswap v4 hook</span>
-          <span class="pill">Reactive callback flow</span>
-          <span class="pill">Sepolia-first deploy</span>
-        </div>
       </section>
 
-      <section class="overview-grid">
-        <article class="mini-card">
-          <span class="mini-step">1</span>
-          <h3>Choose a template</h3>
-          <p>Start from a buy-dip or sell-rally policy instead of typing raw values.</p>
-        </article>
-        <article class="mini-card">
-          <span class="mini-step">2</span>
-          <h3>Fund the hook</h3>
-          <p>Use a preset asset or paste a custom token that matches the pool input side.</p>
-        </article>
-        <article class="mini-card">
-          <span class="mini-step">3</span>
-          <h3>Register and monitor</h3>
-          <p>The hook remains the trust anchor. Execution is re-validated on-chain.</p>
-        </article>
-      </section>
+      <section class="trade-card">
+        <div class="trade-head">
+          <div>
+            <p class="card-kicker">Live pair</p>
+            <h2>mUSD / WETH</h2>
+          </div>
+          <div class="meta-pills">
+            <span id="account-pill" class="pill subtle">No wallet</span>
+            <span id="hook-pill" class="pill subtle">Hook pending</span>
+          </div>
+        </div>
 
-      <section id="status-bar" class="status-bar hidden">
-        <div class="stat">
-          <span class="stat-label">Account</span>
-          <span id="account-display" class="stat-value mono">—</span>
+        <div class="status-grid">
+          <div class="status-box">
+            <span>Status</span>
+            <strong id="pool-status">Unchecked</strong>
+          </div>
+          <div class="status-box">
+            <span>Live `sqrtPriceX96`</span>
+            <strong id="live-price" class="mono">—</strong>
+          </div>
+          <div class="status-box">
+            <span>Hook deposit</span>
+            <strong id="deposit-balance">—</strong>
+          </div>
+          <div class="status-box">
+            <span>Wallet spend balance</span>
+            <strong id="wallet-balance">—</strong>
+          </div>
+          <div class="status-box">
+            <span>Approval</span>
+            <strong id="allowance-badge">Connect wallet</strong>
+          </div>
         </div>
-        <div class="stat">
-          <span class="stat-label">Hook</span>
-          <span id="hook-display" class="stat-value mono">—</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Deployment</span>
-          <span id="deployment-display" class="stat-value">Pending</span>
-        </div>
-      </section>
 
-      <section id="section-setup" class="card hidden">
-        <h2>Demo Setup</h2>
-        <p class="card-desc">
-          This UI is tuned for Sepolia. Choose a template, paste the hook-enabled
-          pool ID, and optionally inspect the current `sqrtPriceX96`.
+        <div class="section-label">Choose the demo order</div>
+        <div class="mode-grid">
+          <button class="mode-card is-active" data-mode="buy-dip">
+            <span>Buy The Dip</span>
+            <small>Spend WETH when price trades lower</small>
+          </button>
+          <button class="mode-card" data-mode="sell-rally">
+            <span>Sell The Rally</span>
+            <small>Spend mUSD when price trades higher</small>
+          </button>
+        </div>
+
+        <div class="input-grid">
+          <label class="field">
+            <span>Amount</span>
+            <input id="order-amount" type="text" placeholder="0.10" />
+          </label>
+          <label class="field">
+            <span>Expiry</span>
+            <select id="expiry-select"></select>
+          </label>
+        </div>
+
+        <div id="amount-quick-row" class="chip-row"></div>
+
+        <div class="section-label">Trigger band from live price</div>
+        <div class="chip-row">
+          <button class="chip-btn is-active" data-trigger="500">5%</button>
+          <button class="chip-btn" data-trigger="1000">10%</button>
+          <button class="chip-btn" data-trigger="2000">20%</button>
+        </div>
+
+        <div id="order-summary" class="summary-card"></div>
+
+        <div class="action-row">
+          <button id="btn-approve" class="btn btn-outline">Approve Spend Token</button>
+          <button id="btn-submit" class="btn btn-accent">Create Demo Order</button>
+        </div>
+
+        <p class="helper-copy">
+          `Create Demo Order` sends two wallet prompts in sequence: deposit to the hook, then register the reactive policy against the live demo pool.
         </p>
+      </section>
 
-        <div class="form-row">
-          <div class="field">
-            <label for="template-preset">Policy template</label>
-            <select id="template-preset"></select>
+      <section class="stack">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="card-kicker">Your demo orders</p>
+              <h3>Open orders</h3>
+            </div>
+            <button id="btn-refresh" class="btn btn-ghost btn-small">Refresh</button>
           </div>
-          <div class="field">
-            <label for="pool-id">Pool ID</label>
-            <input id="pool-id" type="text" placeholder="0x..." />
+          <div id="policies-list" class="policies-list">
+            <p class="empty-state">Connect a wallet to see demo orders.</p>
           </div>
-        </div>
+        </section>
 
-        <div class="form-row">
-          <div class="field">
-            <label>Template summary</label>
-            <div id="template-summary" class="info-box">Choose a template.</div>
-          </div>
-          <div class="field field-sm">
-            <label>Current pool price</label>
-            <div class="inline-info">
-              <span id="pool-price" class="stat-value mono">—</span>
-              <button id="btn-price" class="btn btn-ghost btn-sm">Read price</button>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="card-kicker">Activity</p>
+              <h3>Transaction log</h3>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section id="section-deposit" class="card hidden">
-        <h2>Fund The Hook</h2>
-        <p class="card-desc">
-          Deposits stay in `MimosaHook` until you withdraw, cancel, expire, or execute a policy.
-        </p>
-
-        <div class="form-row">
-          <div class="field">
-            <label for="deposit-token-preset">Asset</label>
-            <select id="deposit-token-preset"></select>
+          <div id="tx-log" class="tx-log">
+            <p class="empty-state">No activity yet.</p>
           </div>
-          <div id="custom-token-wrap" class="field hidden">
-            <label for="deposit-token">Custom token address</label>
-            <input id="deposit-token" type="text" placeholder="0x..." />
-          </div>
-          <div class="field field-sm">
-            <label for="deposit-amount">Amount</label>
-            <input id="deposit-amount" type="text" placeholder="0.10" />
-          </div>
-        </div>
-
-        <div class="chip-row" id="deposit-quick-row"></div>
-
-        <div class="form-row">
-          <div class="field">
-            <label>Selected asset</label>
-            <div id="asset-note" class="info-box">Pick an asset preset to begin.</div>
-          </div>
-          <div class="field field-sm">
-            <label>Your deposit balance</label>
-            <span id="deposit-balance" class="stat-value mono">—</span>
-          </div>
-        </div>
-
-        <div class="btn-row">
-          <button id="btn-approve" class="btn btn-outline">Approve</button>
-          <button id="btn-deposit" class="btn btn-accent">Deposit</button>
-          <button id="btn-withdraw" class="btn btn-ghost">Withdraw</button>
-        </div>
-      </section>
-
-      <section id="section-register" class="card hidden">
-        <h2>Launch Policy</h2>
-        <p class="card-desc">
-          Keep the pool and template values tight. The hook will reject stale or invalid trigger executions anyway.
-        </p>
-
-        <div class="form-row">
-          <div class="field">
-            <label for="reg-price">Trigger price (`sqrtPriceX96`)</label>
-            <input id="reg-price" type="text" placeholder="79228162514264337593543950336" />
-          </div>
-          <div class="field field-sm">
-            <label for="reg-direction">Condition</label>
-            <select id="reg-direction">
-              <option value="below">Execute when price ≤ trigger</option>
-              <option value="above">Execute when price ≥ trigger</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="field field-sm">
-            <label for="reg-zfo">Swap side</label>
-            <select id="reg-zfo">
-              <option value="true">token0 → token1</option>
-              <option value="false">token1 → token0</option>
-            </select>
-          </div>
-          <div class="field field-sm">
-            <label for="reg-amount">Input amount</label>
-            <input id="reg-amount" type="text" placeholder="0.10" />
-          </div>
-          <div class="field field-sm">
-            <label for="reg-min">Min output</label>
-            <input id="reg-min" type="text" placeholder="0" />
-          </div>
-        </div>
-
-        <div class="chip-row" id="register-quick-row"></div>
-
-        <div class="form-row">
-          <div class="field field-sm">
-            <label for="reg-expiry-preset">Expiry</label>
-            <select id="reg-expiry-preset"></select>
-          </div>
-          <div id="custom-expiry-wrap" class="field field-sm hidden">
-            <label for="reg-expiry">Custom unix timestamp</label>
-            <input id="reg-expiry" type="text" placeholder="0" />
-          </div>
-          <div class="field field-sm">
-            <label for="reg-tip">Executor tip</label>
-            <input id="reg-tip" type="text" placeholder="0" value="0" />
-          </div>
-        </div>
-
-        <div class="btn-row">
-          <button id="btn-register" class="btn btn-accent">Register Policy</button>
-        </div>
-      </section>
-
-      <section id="section-policies" class="card hidden">
-        <div class="card-header-row">
-          <div>
-            <h2>Your Policies</h2>
-            <p class="card-desc compact">Fast local scan of policies owned by the connected account.</p>
-          </div>
-          <button id="btn-refresh" class="btn btn-ghost btn-sm">Refresh</button>
-        </div>
-        <div id="policies-list" class="policies-list">
-          <p class="empty-state">No policies yet.</p>
-        </div>
-      </section>
-
-      <section id="section-log" class="card hidden">
-        <h2>Activity</h2>
-        <div id="tx-log" class="tx-log">
-          <p class="empty-state">No transactions yet.</p>
-        </div>
+        </section>
       </section>
     </main>
-
-    <footer>
-      <span>Sepolia pool manager: `0xE03A...3543`</span>
-      <span>Reactive callback proxy: `0xc9f3...7bDA`</span>
-    </footer>
 
     <div id="toast" class="toast hidden"></div>
 

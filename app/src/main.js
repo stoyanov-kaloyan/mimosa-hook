@@ -1,33 +1,28 @@
 import "./style.css";
 import { ethers } from "ethers";
-import {
-  connect,
-  onAccountChange,
-  shortAddr,
-  getAccount,
-  getSigner,
-  getChainId,
-} from "./wallet.js";
+import { connect, onAccountChange, shortAddr, getAccount, getSigner, getChainId } from "./wallet.js";
 import {
   initHook,
   approve,
   deposit,
-  withdraw,
   registerPolicy,
   cancelPolicy,
   executePolicy,
   expirePolicy,
   readDeposit,
-  fetchUserPolicies,
   readCurrentPrice,
+  readPoolInitialized,
+  readAllowance,
+  readTokenBalance,
+  fetchUserPolicies,
 } from "./hook.js";
 import {
+  DEMO_DEFAULTS,
   NETWORKS,
-  TOKEN_PRESETS,
-  POLICY_TEMPLATES,
+  ORDER_PRESETS,
+  TRIGGER_PRESETS,
   EXPIRY_PRESETS,
   QUICK_AMOUNTS,
-  ZERO,
   loadManifest,
 } from "./config.js";
 
@@ -35,88 +30,73 @@ const $ = (s) => document.querySelector(s);
 
 const btnConnect = $("#btn-connect");
 const btnApprove = $("#btn-approve");
-const btnDeposit = $("#btn-deposit");
-const btnWithdraw = $("#btn-withdraw");
-const btnRegister = $("#btn-register");
+const btnSubmit = $("#btn-submit");
 const btnRefresh = $("#btn-refresh");
-const btnPrice = $("#btn-price");
 
 const networkBadge = $("#network-badge");
-const statusBar = $("#status-bar");
-const accountDisplay = $("#account-display");
-const hookDisplay = $("#hook-display");
-const deploymentDisplay = $("#deployment-display");
-
-const sectionSetup = $("#section-setup");
-const sectionDeposit = $("#section-deposit");
-const sectionRegister = $("#section-register");
-const sectionPolicies = $("#section-policies");
-const sectionLog = $("#section-log");
-
-const templatePreset = $("#template-preset");
-const templateSummary = $("#template-summary");
-const poolIdInput = $("#pool-id");
-const poolPrice = $("#pool-price");
-
-const tokenPreset = $("#deposit-token-preset");
-const customTokenWrap = $("#custom-token-wrap");
-const depositToken = $("#deposit-token");
-const depositAmount = $("#deposit-amount");
+const accountPill = $("#account-pill");
+const poolStatus = $("#pool-status");
+const livePrice = $("#live-price");
+const hookPill = $("#hook-pill");
+const amountInput = $("#order-amount");
+const amountQuickRow = $("#amount-quick-row");
+const expirySelect = $("#expiry-select");
+const orderSummary = $("#order-summary");
 const depositBalance = $("#deposit-balance");
-const assetNote = $("#asset-note");
-
-const regPrice = $("#reg-price");
-const regDirection = $("#reg-direction");
-const regZfo = $("#reg-zfo");
-const regAmount = $("#reg-amount");
-const regMin = $("#reg-min");
-const regExpiryPreset = $("#reg-expiry-preset");
-const customExpiryWrap = $("#custom-expiry-wrap");
-const regExpiry = $("#reg-expiry");
-const regTip = $("#reg-tip");
-
+const allowanceBadge = $("#allowance-badge");
+const walletBalance = $("#wallet-balance");
 const policiesList = $("#policies-list");
 const txLog = $("#tx-log");
-const depositQuickRow = $("#deposit-quick-row");
-const registerQuickRow = $("#register-quick-row");
+const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
+const triggerButtons = Array.from(document.querySelectorAll("[data-trigger]"));
 
-let hookAddr = null;
 let manifest = null;
+let hookAddr = null;
+let selectedModeId = ORDER_PRESETS[0].id;
+let selectedTriggerBps = TRIGGER_PRESETS[0].bps;
+let currentPrice = null;
+let poolReady = false;
 
-function toast(msg, error = false) {
+function getErrorMessage(error) {
+  if (error?.code === "CALL_EXCEPTION" && error?.revert?.name) {
+    return error.revert.name;
+  }
+  return (
+    error?.shortMessage ||
+    error?.revert?.name ||
+    error?.reason ||
+    error?.info?.error?.message ||
+    error?.info?.message ||
+    error?.message ||
+    "Unknown error"
+  );
+}
+
+function toast(message, error = false) {
   const el = $("#toast");
-  el.textContent = msg;
+  el.textContent = message;
   el.classList.toggle("error", error);
   el.classList.remove("hidden");
   el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 3500);
-}
-
-function logTx(msg, txHash = null, error = false) {
-  sectionLog.classList.remove("hidden");
-  const empty = txLog.querySelector(".empty-state");
-  if (empty) empty.remove();
-
-  const div = document.createElement("div");
-  div.className = "tx-entry";
-
-  const time = new Date().toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  div.innerHTML = `
-    <span class="tx-time">${time}</span>
-    <span class="${error ? "tx-err" : "tx-msg"}">${msg}</span>
-    ${txHash ? `<a class="tx-hash" href="${explorerTxUrl(txHash)}" target="_blank" rel="noopener">${shortAddr(txHash)}</a>` : ""}
-  `;
-  txLog.prepend(div);
+  setTimeout(() => el.classList.remove("show"), 3200);
 }
 
 function explorerTxUrl(hash) {
   const net = NETWORKS[getChainId()];
   return `${net?.explorer || "https://etherscan.io"}/tx/${hash}`;
+}
+
+function logTx(message, txHash = null, error = false) {
+  const empty = txLog.querySelector(".empty-state");
+  if (empty) empty.remove();
+
+  const row = document.createElement("div");
+  row.className = "tx-entry";
+  row.innerHTML = `
+    <span class="tx-copy ${error ? "tx-copy-error" : ""}">${message}</span>
+    ${txHash ? `<a class="tx-link" href="${explorerTxUrl(txHash)}" target="_blank" rel="noopener">${shortAddr(txHash)}</a>` : ""}
+  `;
+  txLog.prepend(row);
 }
 
 function parseAmount(value) {
@@ -131,294 +111,316 @@ function formatAmount(value) {
   }
 }
 
-function safeAddress(addr) {
-  if (!addr) return null;
-  if (addr === "0x0") return ZERO;
-  return addr;
+function truncValue(value) {
+  const text = value?.toString() || "—";
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}…${text.slice(-6)}`;
 }
 
-function isZeroAddress(addr) {
-  return !addr || addr.toLowerCase() === ZERO.toLowerCase();
+function getMode() {
+  return ORDER_PRESETS.find((item) => item.id === selectedModeId) || ORDER_PRESETS[0];
 }
 
-function selectedTokenConfig() {
-  return TOKEN_PRESETS.find((token) => token.id === tokenPreset.value);
+function getExpirySeconds() {
+  const preset = EXPIRY_PRESETS.find((item) => item.id === expirySelect.value) || EXPIRY_PRESETS[1];
+  return preset.seconds;
 }
 
-function getSelectedTokenAddress() {
-  const preset = selectedTokenConfig();
-  if (!preset) return null;
-  if (preset.id === "custom") return safeAddress(depositToken.value.trim());
-  return preset.address;
+function getTriggerPrice() {
+  if (!currentPrice) return null;
+  const base = BigInt(currentPrice);
+  const delta = (base * BigInt(selectedTriggerBps)) / 10_000n;
+  const mode = getMode();
+  return mode.triggerAbove ? base + delta : base - delta;
 }
 
-function populateSelect(selectEl, items) {
-  selectEl.innerHTML = items
-    .map((item) => `<option value="${item.id}">${item.label}</option>`)
-    .join("");
+function isWrongNetwork() {
+  return getChainId() !== "0xaa36a7";
 }
 
-function renderQuickAmountButtons(target, inputId) {
-  target.innerHTML = QUICK_AMOUNTS
-    .map(
-      (value) =>
-        `<button class="chip-btn" data-fill="${value}" data-target="${inputId}">${value}</button>`,
-    )
-    .join("");
-}
-
-function setupPresetControls() {
-  populateSelect(templatePreset, POLICY_TEMPLATES);
-  populateSelect(tokenPreset, TOKEN_PRESETS);
-  populateSelect(regExpiryPreset, EXPIRY_PRESETS);
-  renderQuickAmountButtons(depositQuickRow, "deposit-amount");
-  renderQuickAmountButtons(registerQuickRow, "reg-amount");
-
-  document.querySelectorAll("[data-fill]").forEach((btn) => {
-    btn.addEventListener("click", (event) => {
-      event.preventDefault();
-      const target = $(`#${btn.dataset.target}`);
-      target.value = btn.dataset.fill;
-    });
-  });
-
-  applyTemplate(POLICY_TEMPLATES[0].id);
-  tokenPreset.value = TOKEN_PRESETS[0].id;
-  syncTokenPreset();
-  syncExpiryPreset();
-}
-
-function applyTemplate(templateId) {
-  const template = POLICY_TEMPLATES.find((item) => item.id === templateId);
-  if (!template) return;
-
-  regPrice.value = template.triggerPrice;
-  regDirection.value = template.triggerDirection;
-  regZfo.value = template.zeroForOne;
-  regAmount.value = template.amount;
-  regMin.value = template.minOutput;
-  regTip.value = template.tip;
-  regExpiryPreset.value = template.expiryPreset;
-  templateSummary.textContent = template.summary;
-  syncExpiryPreset();
-}
-
-function syncTokenPreset() {
-  const token = selectedTokenConfig();
-  const isCustom = token?.id === "custom";
-  customTokenWrap.classList.toggle("hidden", !isCustom);
-
-  const label = token?.label || "Unknown";
-  const note = token?.note || "Choose the asset you will spend when the policy executes.";
-  const address = isCustom ? depositToken.value.trim() || "Paste a token address." : token.address;
-  assetNote.textContent = `${label}: ${note} ${address ? `Address: ${address}` : ""}`.trim();
-
-  const customMissing = isCustom && !safeAddress(depositToken.value.trim());
-  btnApprove.disabled =
-    !token || customMissing || (!isCustom && isZeroAddress(token.address));
-  refreshBalance();
-}
-
-function syncExpiryPreset() {
-  customExpiryWrap.classList.toggle("hidden", regExpiryPreset.value !== "custom");
-  if (regExpiryPreset.value !== "custom") regExpiry.value = "";
-}
-
-function describeDeployment(hook) {
-  return isZeroAddress(hook) ? "Manifest empty" : "Manifest loaded";
-}
-
-async function withLoading(btn, fn) {
-  btn.classList.add("loading");
-  btn.disabled = true;
+async function withLoading(button, fn) {
+  button.disabled = true;
+  button.classList.add("loading");
   try {
     return await fn();
   } finally {
-    btn.classList.remove("loading");
-    btn.disabled = false;
-    syncTokenPreset();
+    button.disabled = false;
+    button.classList.remove("loading");
+    syncActionState();
   }
 }
 
-async function resolveHookAddress() {
-  const params = new URLSearchParams(window.location.search);
-  const hookFromQuery = params.get("hook");
-  if (hookFromQuery && !isZeroAddress(hookFromQuery)) return hookFromQuery;
+function renderAmountChips() {
+  amountQuickRow.innerHTML = QUICK_AMOUNTS
+    .map((value) => `<button class="chip-btn" data-fill="${value}">${value}</button>`)
+    .join("");
 
-  const net = NETWORKS[getChainId()];
-  if (net?.hook && !isZeroAddress(net.hook)) return net.hook;
-
-  if (!manifest) manifest = await loadManifest();
-  if (manifest?.origin?.hook && !isZeroAddress(manifest.origin.hook)) {
-    return manifest.origin.hook;
-  }
-
-  return null;
+  amountQuickRow.querySelectorAll("[data-fill]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      amountInput.value = button.dataset.fill;
+      renderSummary();
+      syncActionState();
+    });
+  });
 }
 
-async function onConnected(account, chainId) {
-  const net = NETWORKS[chainId];
-  btnConnect.textContent = shortAddr(account);
-  networkBadge.textContent = net?.name || `Chain ${parseInt(chainId, 16)}`;
-  networkBadge.classList.remove("hidden");
-
-  if (!manifest) manifest = await loadManifest();
-  hookAddr = await resolveHookAddress();
-
-  accountDisplay.textContent = shortAddr(account);
-  hookDisplay.textContent = hookAddr ? shortAddr(hookAddr) : "Not deployed";
-  deploymentDisplay.textContent = hookAddr
-    ? describeDeployment(hookAddr)
-    : "Deploy on Sepolia first";
-  statusBar.classList.remove("hidden");
-
-  if (!hookAddr) {
-    toast("No hook address configured yet. Deploy first, then refresh the app.", true);
-    sectionSetup.classList.remove("hidden");
-    sectionLog.classList.remove("hidden");
-    return;
-  }
-
-  initHook(hookAddr, getSigner());
-
-  statusBar.classList.remove("hidden");
-  sectionSetup.classList.remove("hidden");
-  sectionDeposit.classList.remove("hidden");
-  sectionRegister.classList.remove("hidden");
-  sectionPolicies.classList.remove("hidden");
-  sectionLog.classList.remove("hidden");
-
-  await refreshBalance();
-  await refreshPolicies();
-
-  toast(`Connected to ${net?.name || "chain"}`);
-  logTx("Wallet connected");
+function renderExpiryOptions() {
+  expirySelect.innerHTML = EXPIRY_PRESETS.map((item) => `<option value="${item.id}">${item.label}</option>`).join("");
+  expirySelect.value = "1d";
 }
 
-async function refreshBalance() {
-  if (!getAccount() || !hookAddr) return;
-  const token = getSelectedTokenAddress();
-  if (!token) {
-    depositBalance.textContent = "—";
-    return;
-  }
-
-  try {
-    const bal = await readDeposit(getAccount(), token);
-    depositBalance.textContent = formatAmount(bal);
-  } catch {
-    depositBalance.textContent = "—";
-  }
+function setActiveButtons() {
+  modeButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.mode === selectedModeId);
+  });
+  triggerButtons.forEach((button) => {
+    button.classList.toggle("is-active", Number(button.dataset.trigger) === selectedTriggerBps);
+  });
 }
 
-function getExpiryValue() {
-  const preset = EXPIRY_PRESETS.find((item) => item.id === regExpiryPreset.value);
-  if (!preset) return 0;
-  if (preset.id === "custom") return parseInt(regExpiry.value.trim(), 10) || 0;
-  if (preset.seconds === 0) return 0;
-  return Math.floor(Date.now() / 1000) + preset.seconds;
-}
+function renderSummary() {
+  const mode = getMode();
+  const triggerPrice = getTriggerPrice();
+  const amount = amountInput.value.trim() || "0.00";
+  const triggerLabel = mode.triggerAbove ? "above" : "below";
+  const percent = (selectedTriggerBps / 100).toFixed(0);
+  const expiry = EXPIRY_PRESETS.find((item) => item.id === expirySelect.value)?.label || "1 day";
 
-function renderPolicyCard(policy) {
-  const expiryStr = policy.expiry
-    ? new Date(policy.expiry * 1000).toLocaleString()
-    : "none";
-  const status = policy.executed ? "executed" : "active";
-  const trigger = `${policy.triggerAbove ? "≥" : "≤"} ${truncNum(policy.triggerPrice)}`;
-  const swapSide = policy.zeroForOne ? "token0→token1" : "token1→token0";
-
-  return `
-    <div class="policy-card ${policy.executed ? "executed" : ""}">
-      <div class="policy-header">
-        <span class="policy-id">#${policy.id}</span>
-        <span class="policy-status ${status}">${status}</span>
-      </div>
-      <dl class="policy-meta">
-        <div><dt>Pool</dt><dd>${shortAddr(policy.poolId)}</dd></div>
-        <div><dt>Trigger</dt><dd>${trigger}</dd></div>
-        <div><dt>Swap</dt><dd>${swapSide}</dd></div>
-        <div><dt>Input</dt><dd>${formatAmount(policy.inputAmount)}</dd></div>
-        <div><dt>Min out</dt><dd>${formatAmount(policy.minOutput)}</dd></div>
-        <div><dt>Tip</dt><dd>${formatAmount(policy.executorTip)}</dd></div>
-        <div><dt>Expiry</dt><dd>${expiryStr}</dd></div>
-      </dl>
-      ${
-        policy.executed
-          ? ""
-          : `
-        <div class="policy-actions">
-          <button class="btn btn-sm btn-accent" data-action="execute" data-id="${policy.id}">Execute</button>
-          <button class="btn btn-sm btn-danger" data-action="cancel" data-id="${policy.id}">Cancel</button>
-          ${
-            policy.expiry
-              ? `<button class="btn btn-sm btn-ghost" data-action="expire" data-id="${policy.id}">Expire</button>`
-              : ""
-          }
-        </div>
-      `
-      }
+  orderSummary.innerHTML = `
+    <div class="summary-line">
+      <span>Pool</span>
+      <strong>mUSD / WETH on Sepolia</strong>
+    </div>
+    <div class="summary-line">
+      <span>Spend asset</span>
+      <strong>${mode.spendSymbol}</strong>
+    </div>
+    <div class="summary-line">
+      <span>Trigger</span>
+      <strong>${percent}% ${triggerLabel} live price</strong>
+    </div>
+    <div class="summary-line">
+      <span>Computed trigger</span>
+      <strong class="mono">${triggerPrice ? truncValue(triggerPrice) : "Waiting for pool read"}</strong>
+    </div>
+    <div class="summary-line">
+      <span>Amount</span>
+      <strong>${amount} ${mode.spendSymbol}</strong>
+    </div>
+    <div class="summary-line">
+      <span>Expiry</span>
+      <strong>${expiry}</strong>
     </div>
   `;
 }
 
+async function resolveHookAddress() {
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get("hook");
+  if (fromQuery) return fromQuery;
+
+  const networkHook = NETWORKS[getChainId()]?.hook;
+  if (networkHook) return networkHook;
+
+  if (!manifest) manifest = await loadManifest();
+  return manifest?.origin?.hook || null;
+}
+
+async function refreshPoolState() {
+  if (isWrongNetwork()) {
+    poolReady = false;
+    currentPrice = null;
+    poolStatus.textContent = "Switch wallet to Sepolia";
+    livePrice.textContent = "—";
+    return;
+  }
+
+  if (!hookAddr) {
+    poolReady = false;
+    poolStatus.textContent = "Hook missing";
+    livePrice.textContent = "—";
+    currentPrice = null;
+    return;
+  }
+
+  try {
+    const initialized = await readPoolInitialized(DEMO_DEFAULTS.demoPoolId);
+    poolReady = initialized;
+    poolStatus.textContent = initialized ? "Live and ready" : "Pool not registered";
+    currentPrice = initialized ? await readCurrentPrice(DEMO_DEFAULTS.demoPoolId) : null;
+    livePrice.textContent = currentPrice ? truncValue(currentPrice) : "—";
+  } catch (error) {
+    poolReady = false;
+    currentPrice = null;
+    poolStatus.textContent = "Pool read failed";
+    livePrice.textContent = "—";
+    logTx(`Pool read failed: ${getErrorMessage(error)}`, null, true);
+  }
+
+  renderSummary();
+}
+
+async function refreshBalances() {
+  if (isWrongNetwork()) {
+    depositBalance.textContent = "Switch to Sepolia";
+    allowanceBadge.textContent = "Switch to Sepolia";
+    walletBalance.textContent = "Switch to Sepolia";
+    return;
+  }
+
+  if (!getAccount() || !hookAddr) {
+    depositBalance.textContent = "—";
+    allowanceBadge.textContent = "Connect wallet";
+    walletBalance.textContent = "—";
+    return;
+  }
+
+  const mode = getMode();
+  try {
+    const [hookDeposit, allowance, spendBalance] = await Promise.all([
+      readDeposit(getAccount(), mode.spendToken),
+      readAllowance(mode.spendToken, getAccount()),
+      readTokenBalance(mode.spendToken, getAccount()),
+    ]);
+
+    depositBalance.textContent = `${formatAmount(hookDeposit)} ${mode.spendSymbol}`;
+    allowanceBadge.textContent = allowance > 0n ? "Approved" : "Approval needed";
+    walletBalance.textContent = `${formatAmount(spendBalance)} ${mode.spendSymbol}`;
+  } catch (error) {
+    depositBalance.textContent = "Read failed";
+    allowanceBadge.textContent = "Read failed";
+    walletBalance.textContent = "Read failed";
+    logTx(`Balance read failed: ${getErrorMessage(error)}`, null, true);
+  }
+}
+
+function syncActionState() {
+  const hasWallet = Boolean(getAccount());
+  const validAmount = Boolean(amountInput.value.trim()) && Number(amountInput.value.trim()) > 0;
+  const ready = hasWallet && poolReady && !isWrongNetwork() && validAmount;
+
+  btnApprove.disabled = !hasWallet || isWrongNetwork();
+  btnSubmit.disabled = !ready;
+}
+
+function renderPolicyCard(policy) {
+  const mode = policy.zeroForOne ? "Sell rally" : "Buy dip";
+  const status = policy.executed ? "Executed" : "Active";
+  const expiry = policy.expiry ? new Date(policy.expiry * 1000).toLocaleString() : "None";
+
+  return `
+    <article class="policy-card ${policy.executed ? "is-done" : ""}">
+      <div class="policy-head">
+        <strong>#${policy.id} ${mode}</strong>
+        <span>${status}</span>
+      </div>
+      <div class="policy-grid">
+        <span>Trigger <strong class="mono">${truncValue(policy.triggerPrice)}</strong></span>
+        <span>Input <strong>${formatAmount(policy.inputAmount)}</strong></span>
+        <span>Expiry <strong>${expiry}</strong></span>
+      </div>
+      ${
+        policy.executed
+          ? ""
+          : `
+            <div class="policy-actions">
+              <button class="btn btn-ghost btn-small" data-action="execute" data-id="${policy.id}">Execute</button>
+              <button class="btn btn-ghost btn-small" data-action="cancel" data-id="${policy.id}">Cancel</button>
+              ${policy.expiry ? `<button class="btn btn-ghost btn-small" data-action="expire" data-id="${policy.id}">Expire</button>` : ""}
+            </div>
+          `
+      }
+    </article>
+  `;
+}
+
 async function refreshPolicies() {
-  if (!getAccount() || !hookAddr) return;
+  if (isWrongNetwork()) {
+    policiesList.innerHTML = `<p class="empty-state">Switch your wallet to Sepolia to view demo orders.</p>`;
+    return;
+  }
+
+  if (!getAccount() || !hookAddr) {
+    policiesList.innerHTML = `<p class="empty-state">Connect a wallet to see demo orders.</p>`;
+    return;
+  }
 
   try {
     const policies = await fetchUserPolicies(getAccount());
-    if (policies.length === 0) {
-      policiesList.innerHTML = `<p class="empty-state">No policies yet.</p>`;
+    if (!policies.length) {
+      policiesList.innerHTML = `<p class="empty-state">No demo orders yet.</p>`;
       return;
     }
 
-    policies.sort((a, b) => {
-      if (a.executed !== b.executed) return a.executed ? 1 : -1;
-      return b.id - a.id;
-    });
-
+    policies.sort((a, b) => b.id - a.id);
     policiesList.innerHTML = policies.map(renderPolicyCard).join("");
-    policiesList.querySelectorAll("[data-action]").forEach((btn) => {
-      btn.addEventListener("click", handlePolicyAction);
+
+    policiesList.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", handlePolicyAction);
     });
-  } catch {
-    policiesList.innerHTML = `<p class="empty-state">Error loading policies.</p>`;
+  } catch (error) {
+    policiesList.innerHTML = `<p class="empty-state">Could not load existing orders.</p>`;
+    logTx(`Order list read failed: ${getErrorMessage(error)}`, null, true);
   }
 }
 
 async function handlePolicyAction(event) {
-  const btn = event.currentTarget;
-  const action = btn.dataset.action;
-  const id = parseInt(btn.dataset.id, 10);
+  const button = event.currentTarget;
+  const action = button.dataset.action;
+  const id = Number(button.dataset.id);
 
   try {
-    await withLoading(btn, async () => {
-      let tx;
-      if (action === "cancel") tx = await cancelPolicy(id);
-      if (action === "execute") tx = await executePolicy(id);
-      if (action === "expire") tx = await expirePolicy(id);
+    await withLoading(button, async () => {
+      const tx =
+        action === "cancel"
+          ? await cancelPolicy(id)
+          : action === "execute"
+            ? await executePolicy(id)
+            : await expirePolicy(id);
 
-      logTx(`${capitalize(action)} #${id} submitted`, tx.hash);
+      logTx(`${action} #${id} submitted`, tx.hash);
       await tx.wait();
-      logTx(`${capitalize(action)} #${id} confirmed`, tx.hash);
-      toast(`Policy #${id} ${action}d`);
-      await refreshBalance();
+      logTx(`${action} #${id} confirmed`, tx.hash);
       await refreshPolicies();
+      await refreshBalances();
     });
-  } catch (e) {
-    const message = e.shortMessage || e.message;
+  } catch (error) {
+    const message = getErrorMessage(error);
     toast(message, true);
-    logTx(`${capitalize(action)} #${id} failed: ${message}`, null, true);
+    logTx(`${action} #${id} failed: ${message}`, null, true);
   }
 }
 
-function truncNum(n) {
-  const s = n.toString();
-  if (s.length <= 14) return s;
-  return `${s.slice(0, 8)}…${s.slice(-4)}`;
+async function refreshDemo() {
+  await refreshPoolState();
+  await refreshBalances();
+  await refreshPolicies();
+  renderSummary();
+  syncActionState();
 }
 
-function capitalize(value) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+async function onConnected(account, chainId) {
+  const network = NETWORKS[chainId];
+  btnConnect.textContent = shortAddr(account);
+  networkBadge.textContent = network?.name || `Chain ${parseInt(chainId, 16)}`;
+  networkBadge.classList.remove("hidden");
+  accountPill.textContent = shortAddr(account);
+
+  hookAddr = await resolveHookAddress();
+  hookPill.textContent = hookAddr ? shortAddr(hookAddr) : "Missing";
+
+  if (!hookAddr) {
+    toast("Hook address missing from config.", true);
+    syncActionState();
+    return;
+  }
+
+  initHook(hookAddr, getSigner());
+  if (isWrongNetwork()) {
+    toast("Switch your wallet to Sepolia for the live demo.", true);
+  }
+  await refreshDemo();
 }
 
 btnConnect.addEventListener("click", async () => {
@@ -426,150 +428,116 @@ btnConnect.addEventListener("click", async () => {
     await withLoading(btnConnect, async () => {
       const { account, chainId } = await connect();
       await onConnected(account, chainId);
+      toast("Wallet connected");
+      logTx("Wallet connected");
     });
-  } catch (e) {
-    toast(e.message, true);
+  } catch (error) {
+    toast(getErrorMessage(error), true);
   }
 });
-
-btnPrice.addEventListener("click", async () => {
-  if (!poolIdInput.value.trim()) {
-    toast("Paste a pool ID first", true);
-    return;
-  }
-  if (!hookAddr) {
-    toast("Deploy and configure the hook first", true);
-    return;
-  }
-
-  try {
-    await withLoading(btnPrice, async () => {
-      const price = await readCurrentPrice(poolIdInput.value.trim());
-      poolPrice.textContent = price.toString();
-      logTx("Read current pool price");
-    });
-  } catch (e) {
-    poolPrice.textContent = "Unavailable";
-    toast(e.shortMessage || e.message, true);
-  }
-});
-
-tokenPreset.addEventListener("change", syncTokenPreset);
-depositToken.addEventListener("input", syncTokenPreset);
-templatePreset.addEventListener("change", () => applyTemplate(templatePreset.value));
-regExpiryPreset.addEventListener("change", syncExpiryPreset);
 
 btnApprove.addEventListener("click", async () => {
-  const token = getSelectedTokenAddress();
-  if (!token || isZeroAddress(token)) {
-    toast("No approval needed for native ETH", true);
-    return;
-  }
-
   try {
     await withLoading(btnApprove, async () => {
-      const tx = await approve(token, getSigner());
-      logTx("Approve submitted", tx.hash);
+      const mode = getMode();
+      const tx = await approve(mode.spendToken, getSigner());
+      logTx(`Approve ${mode.spendSymbol}`, tx.hash);
       await tx.wait();
-      logTx("Approve confirmed", tx.hash);
-      toast("Approval confirmed");
+      await refreshBalances();
+      toast(`${mode.spendSymbol} approved`);
     });
-  } catch (e) {
-    const message = e.shortMessage || e.message;
+  } catch (error) {
+    const message = getErrorMessage(error);
     toast(message, true);
     logTx(`Approve failed: ${message}`, null, true);
   }
 });
 
-btnDeposit.addEventListener("click", async () => {
-  const token = getSelectedTokenAddress();
-  const amountStr = depositAmount.value.trim();
-
-  if (!token || !amountStr) {
-    toast("Choose an asset and amount", true);
-    return;
-  }
-
+btnSubmit.addEventListener("click", async () => {
   try {
-    await withLoading(btnDeposit, async () => {
-      const amount = parseAmount(amountStr);
-      const isETH = isZeroAddress(token);
-      const tx = await deposit(token, amount, isETH);
-      logTx("Deposit submitted", tx.hash);
-      await tx.wait();
-      logTx("Deposit confirmed", tx.hash);
-      toast("Deposit confirmed");
-      await refreshBalance();
-    });
-  } catch (e) {
-    const message = e.shortMessage || e.message;
-    toast(message, true);
-    logTx(`Deposit failed: ${message}`, null, true);
-  }
-});
+    await withLoading(btnSubmit, async () => {
+      const mode = getMode();
+      const amount = parseAmount(amountInput.value.trim());
+      const expiry = Math.floor(Date.now() / 1000) + getExpirySeconds();
+      const triggerPrice = getTriggerPrice();
+      const spendBalance = await readTokenBalance(mode.spendToken, getAccount());
 
-btnWithdraw.addEventListener("click", async () => {
-  const token = getSelectedTokenAddress();
-  const amountStr = depositAmount.value.trim();
+      if (spendBalance < amount) {
+        throw new Error(`Not enough ${mode.spendSymbol} in wallet`);
+      }
 
-  if (!token || !amountStr) {
-    toast("Choose an asset and amount", true);
-    return;
-  }
+      const depositTx = await deposit(mode.spendToken, amount, false);
+      logTx(`Deposit ${mode.spendSymbol}`, depositTx.hash);
+      await depositTx.wait();
 
-  try {
-    await withLoading(btnWithdraw, async () => {
-      const tx = await withdraw(token, parseAmount(amountStr));
-      logTx("Withdraw submitted", tx.hash);
-      await tx.wait();
-      logTx("Withdraw confirmed", tx.hash);
-      toast("Withdraw confirmed");
-      await refreshBalance();
-    });
-  } catch (e) {
-    const message = e.shortMessage || e.message;
-    toast(message, true);
-    logTx(`Withdraw failed: ${message}`, null, true);
-  }
-});
-
-btnRegister.addEventListener("click", async () => {
-  if (!poolIdInput.value.trim()) {
-    toast("Pool ID is required", true);
-    return;
-  }
-
-  try {
-    await withLoading(btnRegister, async () => {
-      const tx = await registerPolicy(
-        poolIdInput.value.trim(),
-        regPrice.value.trim(),
-        regDirection.value === "above",
-        regZfo.value === "true",
-        parseAmount(regAmount.value.trim()),
-        regMin.value.trim() === "0" ? 0n : parseAmount(regMin.value.trim()),
-        getExpiryValue(),
-        regTip.value.trim() === "0" ? 0n : parseAmount(regTip.value.trim()),
+      const registerTx = await registerPolicy(
+        DEMO_DEFAULTS.demoPoolId,
+        triggerPrice,
+        mode.triggerAbove,
+        mode.zeroForOne,
+        amount,
+        0n,
+        expiry,
+        0n,
       );
+      logTx("Register demo order", registerTx.hash);
+      await registerTx.wait();
 
-      logTx("Register policy submitted", tx.hash);
-      await tx.wait();
-      logTx("Policy registered", tx.hash);
-      toast("Policy registered");
-      await refreshBalance();
-      await refreshPolicies();
+      amountInput.value = "";
+      await refreshDemo();
+      toast("Demo order created");
     });
-  } catch (e) {
-    const message = e.shortMessage || e.message;
+  } catch (error) {
+    const message = getErrorMessage(error);
     toast(message, true);
-    logTx(`Register failed: ${message}`, null, true);
+    logTx(`Create order failed: ${message}`, null, true);
   }
 });
 
-btnRefresh.addEventListener("click", refreshPolicies);
+btnRefresh.addEventListener("click", async () => {
+  try {
+    await refreshDemo();
+    logTx("Refreshed live state");
+  } catch (error) {
+    toast(getErrorMessage(error), true);
+  }
+});
+
+modeButtons.forEach((button) => {
+  button.addEventListener("click", async () => {
+    selectedModeId = button.dataset.mode;
+    setActiveButtons();
+    renderSummary();
+    if (getAccount() && hookAddr) {
+      await refreshBalances();
+    } else {
+      syncActionState();
+    }
+  });
+});
+
+triggerButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectedTriggerBps = Number(button.dataset.trigger);
+    setActiveButtons();
+    renderSummary();
+  });
+});
+
+amountInput.addEventListener("input", () => {
+  renderSummary();
+  syncActionState();
+});
+
+expirySelect.addEventListener("change", renderSummary);
 
 onAccountChange(async ({ account, chainId }) => {
-  if (account) await onConnected(account, chainId);
+  if (!account) return;
+  await onConnected(account, chainId);
 });
 
-setupPresetControls();
+renderAmountChips();
+renderExpiryOptions();
+setActiveButtons();
+renderSummary();
+syncActionState();

@@ -6,12 +6,19 @@ export const DEMO_DEFAULTS = {
   poolManager: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
   callbackProxy: "0xc9f36411C9897e7F959D99ffca2a0Ba7ee0D7bDA",
   reactiveRpc: "https://lasna-rpc.rnk.dev/",
+  demoToken: "0x5B753e64d1B87fBC350e9adC1758eecf52c32Ae5",
+  demoTokenSymbol: "mUSD",
+  quoteToken: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+  quoteTokenSymbol: "WETH",
+  demoPoolId:
+    "0xf0e88c3617e824a1f559635edca7b5a68215c4e80d60e15903f144c8c9f2a679",
+  demoSqrtPriceX96: "79228162514264337593543950336",
 };
 
 export const NETWORKS = {
   "0xaa36a7": {
     name: "Sepolia",
-    hook: "",
+    hook: "0x892D42B22Ac103C682e43b945c81C4572E269000",
     explorer: "https://sepolia.etherscan.io",
     poolManager: DEMO_DEFAULTS.poolManager,
     callbackProxy: DEMO_DEFAULTS.callbackProxy,
@@ -23,75 +30,51 @@ export const NETWORKS = {
   },
 };
 
-export const TOKEN_PRESETS = [
-  {
-    id: "weth",
-    label: "Sepolia WETH",
-    address: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
-    note: "Useful for demo funding on Sepolia.",
-  },
-  {
-    id: "eth",
-    label: "Native ETH",
-    address: ZERO,
-    note: "Use only for native-currency pools.",
-  },
-  {
-    id: "custom",
-    label: "Custom token",
-    address: "",
-    note: "Paste the exact token used by the pool side you want to spend.",
-  },
-];
-
-export const POLICY_TEMPLATES = [
+export const ORDER_PRESETS = [
   {
     id: "buy-dip",
-    label: "Buy the dip",
-    summary:
-      "Execute when price falls to or below the trigger and swap token1 into token0.",
-    triggerPrice: "56022770974786139918731938227",
-    triggerDirection: "below",
-    zeroForOne: "false",
-    amount: "0.10",
-    minOutput: "0",
-    tip: "0",
-    expiryPreset: "1d",
+    label: "Buy The Dip",
+    summary: "Spend WETH only after the live pool price drops below your selected trigger band.",
+    spendToken: DEMO_DEFAULTS.quoteToken,
+    spendSymbol: DEMO_DEFAULTS.quoteTokenSymbol,
+    receiveSymbol: DEMO_DEFAULTS.demoTokenSymbol,
+    triggerAbove: false,
+    zeroForOne: false,
   },
   {
     id: "sell-rally",
-    label: "Sell the rally",
-    summary:
-      "Execute when price rises to or above the trigger and swap token0 into token1.",
-    triggerPrice: "112045541949572279837463876454",
-    triggerDirection: "above",
-    zeroForOne: "true",
-    amount: "0.10",
-    minOutput: "0",
-    tip: "0",
-    expiryPreset: "1d",
+    label: "Sell The Rally",
+    summary: "Spend mUSD only after the live pool price rises above your selected trigger band.",
+    spendToken: DEMO_DEFAULTS.demoToken,
+    spendSymbol: DEMO_DEFAULTS.demoTokenSymbol,
+    receiveSymbol: DEMO_DEFAULTS.quoteTokenSymbol,
+    triggerAbove: true,
+    zeroForOne: true,
+  },
+];
+
+export const TRIGGER_PRESETS = [
+  {
+    id: "5",
+    label: "5%",
+    bps: 500,
   },
   {
-    id: "keeper-demo",
-    label: "Keeper-friendly demo",
-    summary:
-      "Same as buy-the-dip, but includes a small tip for third-party execution.",
-    triggerPrice: "56022770974786139918731938227",
-    triggerDirection: "below",
-    zeroForOne: "false",
-    amount: "0.25",
-    minOutput: "0",
-    tip: "0.005",
-    expiryPreset: "6h",
+    id: "10",
+    label: "10%",
+    bps: 1000,
+  },
+  {
+    id: "20",
+    label: "20%",
+    bps: 2000,
   },
 ];
 
 export const EXPIRY_PRESETS = [
-  { id: "none", label: "No expiry", seconds: 0 },
   { id: "1h", label: "1 hour", seconds: 60 * 60 },
   { id: "6h", label: "6 hours", seconds: 6 * 60 * 60 },
   { id: "1d", label: "1 day", seconds: 24 * 60 * 60 },
-  { id: "custom", label: "Custom unix timestamp", seconds: null },
 ];
 
 export const QUICK_AMOUNTS = ["0.10", "0.25", "1.00"];

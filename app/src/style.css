@@ -109,6 +109,7 @@ select {
 .field span,
 .meta-chip span {
   margin: 0;
+  margin-bottom: 4px;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -136,6 +137,15 @@ select {
 
 .tag.muted {
   color: var(--muted);
+}
+
+.copyable {
+  cursor: pointer;
+}
+
+.copyable:hover {
+  border-color: var(--line-strong);
+  color: var(--accent-strong);
 }
 
 .brand-stage {
@@ -486,6 +496,23 @@ select {
   display: flex;
   justify-content: space-between;
   gap: 10px;
+}
+
+.tx-hash-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tx-hash {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
 }
 
 .policy-head span,

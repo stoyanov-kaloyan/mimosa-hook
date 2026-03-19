@@ -1,6 +1,6 @@
 import "./style.css";
 import { ethers } from "ethers";
-import { connect, onAccountChange, shortAddr, getAccount, getSigner, getChainId } from "./wallet.js";
+import { connect, disconnect, onAccountChange, shortAddr, getAccount, getSigner, getChainId } from "./wallet.js";
 import {
   initHook,
   approve,
@@ -57,6 +57,15 @@ let selectedTriggerBps = TRIGGER_PRESETS[0].bps;
 let currentPrice = null;
 let poolReady = false;
 
+async function copyText(value, label = "Value") {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast(`${label} copied`);
+  } catch {
+    toast(`Could not copy ${label.toLowerCase()}`, true);
+  }
+}
+
 function getErrorMessage(error) {
   if (error?.code === "CALL_EXCEPTION" && error?.revert?.name) {
     return error.revert.name;
@@ -94,9 +103,46 @@ function logTx(message, txHash = null, error = false) {
   row.className = "tx-entry";
   row.innerHTML = `
     <span class="tx-copy ${error ? "tx-copy-error" : ""}">${message}</span>
-    ${txHash ? `<a class="tx-link" href="${explorerTxUrl(txHash)}" target="_blank" rel="noopener">${shortAddr(txHash)}</a>` : ""}
+    ${txHash ? `
+      <div class="tx-hash-group">
+        <button class="tx-hash copyable" type="button" data-copy="${txHash}" data-copy-label="Transaction hash">${shortAddr(txHash)}</button>
+        <a class="tx-link" href="${explorerTxUrl(txHash)}" target="_blank" rel="noopener">View</a>
+      </div>
+    ` : ""}
   `;
   txLog.prepend(row);
+}
+
+function setCopyableAddress(element, value, fallback) {
+  if (!value) {
+    element.textContent = fallback;
+    element.classList.remove("copyable");
+    delete element.dataset.copy;
+    delete element.dataset.copyLabel;
+    return;
+  }
+
+  element.textContent = shortAddr(value);
+  element.classList.add("copyable");
+  element.dataset.copy = value;
+  element.dataset.copyLabel = fallback;
+}
+
+function resetDisconnectedState() {
+  btnConnect.textContent = "Connect Wallet";
+  networkBadge.textContent = "";
+  networkBadge.classList.add("hidden");
+  accountPill.textContent = "No wallet";
+  accountPill.classList.remove("copyable");
+  delete accountPill.dataset.copy;
+  delete accountPill.dataset.copyLabel;
+  hookPill.textContent = hookAddr ? shortAddr(hookAddr) : "Pending";
+  poolStatus.textContent = "Connect wallet";
+  livePrice.textContent = "—";
+  depositBalance.textContent = "—";
+  allowanceBadge.textContent = "Connect wallet";
+  walletBalance.textContent = "—";
+  policiesList.innerHTML = `<p class="empty-state">Connect a wallet to see demo orders.</p>`;
 }
 
 function parseAmount(value) {
@@ -449,13 +495,13 @@ async function refreshDemo() {
 
 async function onConnected(account, chainId) {
   const network = NETWORKS[chainId];
-  btnConnect.textContent = shortAddr(account);
+  btnConnect.textContent = "Disconnect";
   networkBadge.textContent = network?.name || `Chain ${parseInt(chainId, 16)}`;
   networkBadge.classList.remove("hidden");
-  accountPill.textContent = shortAddr(account);
+  setCopyableAddress(accountPill, account, "Wallet address");
 
   hookAddr = await resolveHookAddress();
-  hookPill.textContent = hookAddr ? shortAddr(hookAddr) : "Missing";
+  setCopyableAddress(hookPill, hookAddr, "Hook address");
 
   if (!hookAddr) {
     toast("Hook address missing from config.", true);
@@ -471,6 +517,12 @@ async function onConnected(account, chainId) {
 }
 
 btnConnect.addEventListener("click", async () => {
+  if (getAccount()) {
+    disconnect();
+    toast("Wallet disconnected");
+    return;
+  }
+
   try {
     await withLoading(btnConnect, async () => {
       const { account, chainId } = await connect();
@@ -578,12 +630,24 @@ amountInput.addEventListener("input", () => {
 expirySelect.addEventListener("change", renderSummary);
 
 onAccountChange(async ({ account, chainId }) => {
-  if (!account) return;
+  if (!account) {
+    resetDisconnectedState();
+    syncActionState();
+    return;
+  }
   await onConnected(account, chainId);
+});
+
+document.addEventListener("click", async (event) => {
+  const target = event.target.closest("[data-copy]");
+  if (!target) return;
+  event.preventDefault();
+  await copyText(target.dataset.copy, target.dataset.copyLabel || "Value");
 });
 
 renderAmountChips();
 renderExpiryOptions();
 setActiveButtons();
 renderSummary();
+resetDisconnectedState();
 syncActionState();
